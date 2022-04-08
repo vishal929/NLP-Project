@@ -4,3 +4,12 @@
 
 # IS = exp(Expected_x KL(p(y|x) || p(y)) )
 
+# p(y) -> y is the label
+# p(y|x) -> label given an image
+
+# split images into groups
+# the paper just uses the openAI code for calculating IS
+def isScore(images, split):
+    pass
+
+

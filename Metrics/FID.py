@@ -5,7 +5,7 @@ import torch
 
 
 # calculating fid given mean and covariance features of the generated set, and of the real set
-def fid(realMeanFeature, generatedMeanFeature, realGeneratedCovariance, generatedRealCovariance):
+def fidScore(realMeanFeature, generatedMeanFeature, realGeneratedCovariance, generatedRealCovariance):
     # ||mu_x-mu_y||^2
     meanDistance = pow(abs(generatedMeanFeature - realMeanFeature), 2)
     # Cov_x + Cov_y - 2 Cov_x Cov_y
