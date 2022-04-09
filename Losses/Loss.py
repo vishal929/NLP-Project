@@ -98,5 +98,6 @@ def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenSco
 def adversarialLoss():
     pass
 
+# total loss for the generator consists of an adversarial loss + a weighted damsm loss
 def totalLoss(damsmWeight, adversarialLoss, damsmLoss):
     return adversarialLoss + (damsmWeight * damsmLoss)
