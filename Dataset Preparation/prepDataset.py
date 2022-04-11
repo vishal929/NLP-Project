@@ -7,7 +7,10 @@ import pandas as pd
 
 # function to place cropped images and preprocessed captions in their proper places
 # then we can refer to train/test splits separately using the imageCaptionDataset class below
-def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath):
+# imageIDPath is the path to the file mapping filenames of images to imageIDs
+# imageClassPath is the path to the file mapping filenames of images to their classes
+def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
+             imageIDPath, imageClassPath):
     # creating holder folders for train and test images and captions
     if (not os.path.isdir('../CUBS Dataset')):
         os.mkdir('../CUBS Dataset')
@@ -27,19 +30,79 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
     if (not os.path.isdir(os.path.join(testDir, 'Captions'))):
         os.mkdir(os.path.join(testDir, 'Captions'))
 
+    # dictionary holding caption and image data formatted as:
+    textImageData = {}
+    trainTextImageData = {}
+    testTextImageData = {}
+
     # reading the image index designation and updating a dictionary
+    imageIDFile = open(imageIDPath,"r")
+    imageIDMappings = imageIDFile.readlines()
+    for line in imageIDMappings:
+        # space seperated
+        tokens = line.split(' ')
+        # first token is imageID and second token is filename
+        # mapping image ID to filename for the image
+        textImageData[int(tokens[0])] = [tokens[1]]
 
     # reading the class id file for each image class and updating a dictionary
+    classIDFile = open(imageClassPath,"r")
+    imageClassMappings = classIDFile.readlines()
+    for line in imageClassMappings:
+        # space separated
+        tokens = line.split(' ')
+        # first token is the image ID and the second token is the class mapping
+        textImageData[int(tokens[0])].append(int(tokens[1]))
 
     # reading the train/test split file and updating a dictionary
+    trainTestSplitFile = open(trainTestSplitPath,"r")
+    imageTrainTestMappings = trainTestSplitFile.readlines()
+    for line in imageTrainTestMappings:
+        # space separated
+        tokens = line.split(' ')
+        # first token is image ID and the second token is 0 if its in test and 1 if its in training
+        if int(tokens[1])==0:
+            # its in test set
+            testTextImageData[int(tokens[0])] = textImageData[int(tokens[0])]
+        else:
+            # its in training set
+            trainTextImageData[int(tokens[0])] = textImageData[int(tokens[0])]
 
     # reading the bounding box file and updating a dictionary
+    boundingBoxFile = open(boundingBoxFilePath,"r")
+    boundingBoxFileLines = boundingBoxFile.readlines()
+    for line in boundingBoxFileLines:
+        # space separated
+        tokens = line.split(' ')
+        # first token is imageID
+        # next tokens are x, y, width, and height respectively
+        if int(tokens[0]) in trainTextImageData:
+            # we update train dictionary
+            # appending tuple of bounding box values
+            trainTextImageData[int(tokens[0])].append((float(tokens[1]),
+                                                       float(tokens[2]),
+                                                       float(tokens[3]),
+                                                       float(tokens[4])))
+        elif int(tokens[0]) in testTextImageData:
+            # we update test dictionary
+            # appending tuple of bounding box values
+            testTextImageData[int(tokens[0])].append((float(tokens[1]),
+                                                       float(tokens[2]),
+                                                       float(tokens[3]),
+                                                       float(tokens[4])))
 
-    # for each image, crop it based on the bounding box, place it in the images folder
+    # for each image, crop it based on the bounding box, place it in the respective images folder
     # process its captions, update the dictionary with processed captions and place them in the captions folder
     # naming scheme: image is named by its image id
     # captions for each image is designated by the imageID.txt
     # i.e the processed captions for imageID 1 will be placed in 1.txt
+
+    # processing training images and captions
+    for trainImageID in trainTextImageData:
+        pass
+    # processing test images and captions
+    for testImageID in testTextImageData:
+        pass
 
     # we can update the dictionary and save it in case it becomes handy for faster training
     pass
