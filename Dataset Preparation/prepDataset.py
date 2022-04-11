@@ -2,6 +2,7 @@
 import torch.utils.data as data
 from PIL import Image
 import os
+import pickle
 import pandas as pd
 
 
@@ -99,13 +100,48 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
 
     # processing training images and captions
     for trainImageID in trainTextImageData:
-        pass
+        # cropping the image and saving it into images
+        img = Image.open(os.path.join(sourceImageDir,trainTextImageData[trainImageID][0])).convert('RGB')
+        x = int(trainTextImageData[trainImageID][3][0])
+        y = int(trainTextImageData[trainImageID][3][1])
+        w = int(trainTextImageData[trainImageID][3][2])
+        h = int(trainTextImageData[trainImageID][3][3])
+        img = img.crop((x,y,x+w,y-h))
+        # saving image under imageID
+        img.save(os.path.join(os.path.join(trainDir,'Images'),trainTextImageData[trainImageID][1] + '.txt'))
+        # processing captions
+        captionFile = open(os.path.join(sourceCaptionsDir,trainTextImageData[trainImageID][0])[:-3]+'txt')
+        captions = captionFile.readLines()
+        for caption in captions:
+            # process captions
+            pass
+
     # processing test images and captions
     for testImageID in testTextImageData:
-        pass
+        img = Image.open(os.path.join(sourceImageDir, testTextImageData[testImageID][0])).convert('RGB')
+        x = int(testTextImageData[testImageID][3][0])
+        y = int(testTextImageData[testImageID][3][1])
+        w = int(testTextImageData[testImageID][3][2])
+        h = int(testTextImageData[testImageID][3][3])
+        img = img.crop((x, y, x + w, y - h))
+        # saving image under imageID
+        img.save(os.path.join(os.path.join(testDir, 'Images'), testTextImageData[testImageID][1] + '.txt'))
+        # processing captions
+        captionFile = open(os.path.join(sourceCaptionsDir, testTextImageData[testImageID][0])[:-3] + 'txt')
+        captions = captionFile.readLines()
+        for caption in captions:
+            # process captions
+            pass
+
 
     # we can update the dictionary and save it in case it becomes handy for faster training
-    pass
+    with open('trainCUB.pickle','wb') as handle:
+        pickle.dump(trainTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
+
+    with open('testCUB.pickle','wb') as handle:
+        pickle.dump(testTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
+
+    return trainTextImageData, testTextImageData
 
 
 # coco requires less setup, just place train images and correlated
