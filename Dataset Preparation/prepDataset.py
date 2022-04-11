@@ -1,4 +1,6 @@
 # logic for prepping cubs and coco datasets for use with the model
+import random
+
 import torch.utils.data as data
 from PIL import Image
 import os
@@ -6,6 +8,7 @@ import pickle
 # may not need pandas here
 import pandas as pd
 import nltk.tokenize.regexp as RegexTokenizer
+from random import randint
 
 # establish vocabulary takes in a list of tokenized captions
 # returns a mapping from words to an index in vocab, and vice versa, in that order
@@ -216,16 +219,24 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
             # update train dictionary
             trainTextImageData[imgID].append(intCaptions)
         else:
+            pass
             # update test dictionary
             testTextImageData[imgID].append(intCaptions)
 
 
-    # we can update the dictionary and save it in case it becomes handy for faster training
-    with open('trainCUB.pickle','wb') as handle:
+    # save dictionary mappings for training
+    with open('trainImagesCUB.pickle','wb') as handle:
         pickle.dump(trainTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('testCUB.pickle','wb') as handle:
+    with open('testImagesCUB.pickle','wb') as handle:
         pickle.dump(testTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
+
+    with open('CUBWordToIndex','wb') as handle:
+        pickle.dump(wordToIndex, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    with open('CUBIndexToWord','wb') as handle:
+        pickle.dump(indexToWord, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
     return trainTextImageData, testTextImageData
 
@@ -240,7 +251,35 @@ def setupCOCO():
 # cubs also includes bounding boxes for images
 class imageCaptionDataset(data.Dataset):
     def __init__(self, captionsDir, imagesDir):
+        # load pickle serializations for data grabbing
+        # image data includes a list of captions for each image
+        self.imageData={}
+        self.wordToIndex = {}
+        self.indexToWord = {}
+        self.captionToImageRatio = 10
+        self.imageTransform = None
         pass
+
+    def __len__(self):
+        # we will return the number of images
+        return len(self.imageData)
+
+    def __getitem__(self,index):
+        # randomly select an image
+        imgData = random.choice(list(self.imageData.values()))
+        # grab a random caption from the list of captions
+        randCaption = random.choice(imgData[3])
+        # load pixels of image into memory
+        img = Image.open('')
+        # perform any transforms needed on the image
+        img = self.imageTransform(img)
+        return randCaption, img
+
+
+
+
+
+
 
 
 setupCUB('', '', '', '')
