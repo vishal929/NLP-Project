@@ -6,8 +6,6 @@ import torch.utils.data as data
 from PIL import Image
 import os
 import pickle
-# may not need pandas here
-import pandas as pd
 import nltk.tokenize.regexp as RegexTokenizer
 from random import randint
 import numpy as np
@@ -21,6 +19,8 @@ def establishVocabulary(captionList):
     # adding words to vocabulary
     vocab = []
     wordExists = {}
+    # first word is an end token
+    vocab.append('<end>')
     for caption in captionList:
         for word in caption:
             if word not in wordExists:
@@ -30,7 +30,7 @@ def establishVocabulary(captionList):
     wordToIndex = {}
     indexToWord = {}
 
-    for index,w in vocab:
+    for index,w in enumerate(vocab):
         wordToIndex[w] = index
         indexToWord[index] = w
 
@@ -51,10 +51,11 @@ def establishVocabulary(captionList):
 # then we can refer to train/test splits separately using the imageCaptionDataset class below
 # imageIDPath is the path to the file mapping filenames of images to imageIDs
 # imageClassPath is the path to the file mapping filenames of images to their classes
-def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
+def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
              imageIDPath, imageClassPath):
     # creating holder folders for train and test images and captions
     # NOTE, WE MAY NOT NEED THE BELOW DIRECTORIES, WE JUST HAVE TO HAVE A STANDARDIZED LOCATION FOR CUB IMAGES AND CAPTIONS
+    '''
     if (not os.path.isdir('../CUBS Dataset')):
         os.mkdir('../CUBS Dataset')
     dataDir = '../CUBS Dataset'
@@ -72,16 +73,21 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
         os.mkdir(os.path.join(testDir, 'Images'))
     if (not os.path.isdir(os.path.join(testDir, 'Captions'))):
         os.mkdir(os.path.join(testDir, 'Captions'))
+    '''
 
     # dictionary holding caption and image data formatted as:
     textImageData = {}
     trainTextImageData = {}
     testTextImageData = {}
 
+    trainImageIDs = []
+    testImageIDs = []
+
     # reading the image index designation and updating a dictionary
     imageIDFile = open(imageIDPath,"r")
     imageIDMappings = imageIDFile.readlines()
     for line in imageIDMappings:
+        line=line.strip()
         # space seperated
         tokens = line.split(' ')
         # first token is imageID and second token is filename
@@ -93,6 +99,7 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
     classIDFile = open(imageClassPath,"r")
     imageClassMappings = classIDFile.readlines()
     for line in imageClassMappings:
+        line=line.strip()
         # space separated
         tokens = line.split(' ')
         # first token is the image ID and the second token is the class mapping
@@ -109,9 +116,11 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
         if int(tokens[1])==0:
             # its in test set
             testTextImageData[int(tokens[0])] = textImageData[int(tokens[0])]
+            testImageIDs.append(int(tokens[0]))
         else:
             # its in training set
             trainTextImageData[int(tokens[0])] = textImageData[int(tokens[0])]
+            trainImageIDs.append(int(tokens[0]))
     trainTestSplitFile.close()
 
     # reading the bounding box file and updating a dictionary
@@ -160,19 +169,19 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
         '''
         # tokenizing captions
         processedCaptions=[]
-        captionFile = open(os.path.join(sourceCaptionsDir,trainTextImageData[trainImageID][0])[:-3]+'txt')
+        captionFile = open((sourceCaptionsDir + '/' + trainTextImageData[trainImageID][0])[:-3]+'txt')
         captions = captionFile.readlines()
         for caption in captions:
             # tokenize captions
             tokenizedCaption=[]
             # paper uses a regexp tokenizer for pattern r'\w+'
             # this just means to separate all alphanumeric words and dont consider special characters like '$'
-            tokenizer = RegexTokenizer(r'\w+')
+            tokenizer = RegexTokenizer.RegexpTokenizer(r'\w+')
             words = tokenizer.tokenize(caption.lower())
             for word in words:
                 if len(word)>0:
                     tokenizedCaption.append(word)
-            processedCaptions.append((trainImageID,tokenizedCaption))
+            processedCaptions.append(tokenizedCaption)
         # need a mapping so we know which caption to associate with which image
         captionMapping[trainImageID] = processedCaptions
         captionFile.close()
@@ -191,24 +200,30 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
         '''
         # tokenize captions
         processedCaptions=[]
-        captionFile = open(os.path.join(sourceCaptionsDir, testTextImageData[testImageID][0])[:-3] + 'txt')
-        captions = captionFile.readLines()
+        captionFile = open((sourceCaptionsDir + '/' + testTextImageData[testImageID][0])[:-3] + 'txt')
+        captions = captionFile.readlines()
         for caption in captions:
             # tokenize caption
             tokenizedCaption = []
             # paper uses a regexp tokenizer for pattern r'\w+'
             # this just means to separate all alphanumeric words and dont consider special characters like '$'
-            tokenizer = RegexTokenizer(r'\w+')
+            tokenizer = RegexTokenizer.RegexpTokenizer(r'\w+')
             words = tokenizer.tokenize(caption.lower())
             for word in words:
                 if len(word) > 0:
                     tokenizedCaption.append(word)
-            processedCaptions.append((testImageID,tokenizedCaption))
+            processedCaptions.append(tokenizedCaption)
         captionMapping[testImageID]= processedCaptions
         captionFile.close()
 
     # create word to index mapping and index to word mapping and transform captions in that way
-    wordToIndex, indexToWord = establishVocabulary(captionMapping.values())
+    totalCaptions=[]
+    for imageID in captionMapping:
+        captions = captionMapping[imageID]
+        for caption in captions:
+            totalCaptions.append(caption)
+    wordToIndex, indexToWord = establishVocabulary(totalCaptions)
+
 
     # transforming captions for both test and train to adhere to the vocab mappings
     for imgID in captionMapping:
@@ -224,26 +239,31 @@ def setupCUB(sourceImageDir, sourceCaptionsDir, boundingBoxFilePath, trainTestSp
             # update train dictionary
             trainTextImageData[imgID].append(intCaptions)
         else:
-            pass
             # update test dictionary
             testTextImageData[imgID].append(intCaptions)
 
 
     # save dictionary mappings for training
-    with open('trainImagesCUB.pickle','wb') as handle:
+    with open('./CUBMetadata/trainImagesCUB.pickle','wb') as handle:
         pickle.dump(trainTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('testImagesCUB.pickle','wb') as handle:
+    with open('./CUBMetadata/testImagesCUB.pickle','wb') as handle:
         pickle.dump(testTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('CUBWordToIndex','wb') as handle:
+    with open('./CUBMetadata/CUBWordToIndex.pickle','wb') as handle:
         pickle.dump(wordToIndex, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('CUBIndexToWord','wb') as handle:
+    with open('./CUBMetadata/CUBIndexToWord.pickle','wb') as handle:
         pickle.dump(indexToWord, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+    with open('./CUBMetadata/CUBTrainID.pickle','wb') as handle:
+        pickle.dump(trainImageIDs,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
-    return trainTextImageData, testTextImageData
+    with open('./CUBMetadata/CUBTestID.pickle','wb') as handle:
+        pickle.dump(testImageIDs,handle,protocol=pickle.HIGHEST_PROTOCOL)
+
+
+    return trainTextImageData, testTextImageData, wordToIndex, indexToWord
 
 
 # coco requires less setup, just place train images and correlated captions
@@ -259,18 +279,38 @@ def setupCOCO():
 class imageCaptionDataset(data.Dataset):
     def __init__(self, captionsDir, imagesDir, captionToImageRatio=10, imageTransform=None, split='train', maxCaptionLength = 18):
         # load pickle serializations for data grabbing
+        # THIS ASSUMES THAT PICKLE DATA IS AVAILABLE
         # image data includes a list of captions for each image
         self.captionsDir = captionsDir
         self.imagesDir = imagesDir
-        self.imageData={}
-        self.wordToIndex = {}
-        self.indexToWord = {}
+        if split == 'train' and os.path.basename(os.path.dirname(imagesDir))=='CUB_200_2011':
+            # cub train data mappings
+            with open('./CUBMetadata/trainImagesCUB.pickle','rb') as obj:
+                self.imageData = pickle.load(obj,encoding='bytes')
+            with open('./CUBMetadata/CUBWordToIndex.pickle','rb') as obj:
+                self.wordToIndex = pickle.load(obj, encoding='bytes')
+            with open('./CUBMetadata/CUBIndexToWord.pickle','rb') as obj:
+                self.indexToWord = pickle.load(obj,encoding='bytes')
+            with open('./CUBMetadata/CUBTrainID.pickle','rb') as obj:
+                self.IDList = pickle.load(obj,encoding='bytes')
+        elif split == 'test' and os.path.basename(os.path.dirname(imagesDir))=='CUB_200_2011':
+            # cub test data mappings
+            with open('./CUBMetadata/testImagesCUB.pickle', 'rb') as obj:
+                self.imageData = pickle.load(obj, encoding='bytes')
+            with open('./CUBMetadata/CUBWordToIndex.pickle', 'rb') as obj:
+                self.wordToIndex = pickle.load(obj, encoding='bytes')
+            with open('./CUBMetadata/CUBIndexToWord.pickle', 'rb') as obj:
+                self.indexToWord = pickle.load(obj, encoding='bytes')
+            with open('./CUBMetadata/CUBTestID.pickle', 'rb') as obj:
+                self.IDList = pickle.load(obj, encoding='bytes')
         self.captionToImageRatio = captionToImageRatio
         self.imageTransform = imageTransform
         # normalizes each channel with mean specified in the first tuple, and standard deviation from the second tuple
-        self.normalize = torch.nn.Sequential(
-            transforms.toTensor(),
-            transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+        self.normalize = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+            ]
         )
         self.maxCaptionLength = maxCaptionLength
 
@@ -279,14 +319,18 @@ class imageCaptionDataset(data.Dataset):
         return len(self.imageData)
 
     def __getitem__(self,index):
-        # randomly select an image
-        imgData = random.choice(list(self.imageData.values()))
+        # getting image for the index
+        #print(self.imageData)
+        imgData = self.imageData[self.IDList[index]]
         # getting class identifier
         classID = imgData[1]
         # grab a random caption from the list of captions
         randCaption = random.choice(imgData[3])
         # load pixels of image into memory
-        img = Image.open(os.path.join(self.imagesDir,imgData[0]))
+        img = Image.open(self.imagesDir + '/' + imgData[0])
+
+        # showing image here just for testing
+        img.show()
         # perform any transforms needed on the image
         if imgData[2] is not None:
             bbox=imgData[2]
@@ -307,6 +351,7 @@ class imageCaptionDataset(data.Dataset):
 
         # normalizing channels of the image
         img = self.normalize(img)
+
 
         # need to do just a tiny bit of work to the caption before returning
         numWords = len(randCaption)
@@ -329,16 +374,42 @@ class imageCaptionDataset(data.Dataset):
             # sorting the indices so the sentence order is preserved
             indices = np.sort(indices)
             # now just setting the pad based on the index
-            for i in indices:
-                padded[i,0] = randCaption[i]
+            for index,wordIndex in enumerate(indices):
+                padded[index,0] = randCaption[wordIndex]
 
         return img, padded, max(numWords,self.maxCaptionLength), classID
 
+''' CUB TEST BELOW WORKS IN MY TESTING
+# place where cub images should be and where cub captions should be
+cubImageDir = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/CUB_200_2011/CUB_200_2011/' \
+              'images'
+cubCaptionDir = '../CUBS Dataset/Cubs-2011/bird_metadata/birds/text/text'
+
+# place where cub metadata is
+cubBoundingBoxFile = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
+                     'CUB_200_2011/CUB_200_2011/bounding_boxes.txt'
+cubFileMappings = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
+                  'CUB_200_2011/CUB_200_2011/images.txt'
+cubClasses = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
+                  'CUB_200_2011/CUB_200_2011/image_class_labels.txt'
+cubTrainTestSplit = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
+                  'CUB_200_2011/CUB_200_2011/train_test_split.txt'
+
+#setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses)
+
+# testing a loader
+CUBDataset = imageCaptionDataset(cubCaptionDir,cubImageDir,10,None,'train',18)
+
+sample = CUBDataset[0]
+img = sample[0]
+paddedCaption = sample[1]
+print(paddedCaption)
+# converting the padded caption to text just for testing
+for paddedIntArray in paddedCaption:
+    for wordInt in paddedIntArray:
+        print(CUBDataset.indexToWord[wordInt] + ' ')
+'''
 
 
 
 
-
-
-
-setupCUB('', '', '', '')
