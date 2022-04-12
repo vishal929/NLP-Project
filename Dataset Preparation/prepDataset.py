@@ -1,6 +1,7 @@
 # logic for prepping cubs and coco datasets for use with the model
 import random
 
+
 import torch
 import torch.utils.data as data
 from PIL import Image
@@ -329,8 +330,6 @@ class imageCaptionDataset(data.Dataset):
         # load pixels of image into memory
         img = Image.open(self.imagesDir + '/' + imgData[0])
 
-        # showing image here just for testing
-        img.show()
         # perform any transforms needed on the image
         if imgData[2] is not None:
             bbox=imgData[2]
@@ -345,6 +344,8 @@ class imageCaptionDataset(data.Dataset):
             x1 = np.maximum(0, center_x - r)
             x2 = np.minimum(width, center_x + r)
             img = img.crop([x1, y1, x2, y2])
+            # showing image here just for testing
+            img.show()
 
         if self.imageTransform is not None:
             img = self.imageTransform(img)
@@ -408,6 +409,7 @@ print(paddedCaption)
 for paddedIntArray in paddedCaption:
     for wordInt in paddedIntArray:
         print(CUBDataset.indexToWord[wordInt] + ' ')
+print(img)
 '''
 
 
