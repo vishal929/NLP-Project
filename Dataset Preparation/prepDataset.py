@@ -1,6 +1,7 @@
 # logic for prepping cubs and coco datasets for use with the model
 import random
 
+import torch
 import torch.utils.data as data
 from PIL import Image
 import os
@@ -9,6 +10,10 @@ import pickle
 import pandas as pd
 import nltk.tokenize.regexp as RegexTokenizer
 from random import randint
+import numpy as np
+# need to import torchvision for transformations on images
+import torchvision.transforms as transforms
+torch.manual_seed(17)
 
 # establish vocabulary takes in a list of tokenized captions
 # returns a mapping from words to an index in vocab, and vice versa, in that order
@@ -249,16 +254,25 @@ def setupCOCO():
 # cubs has 10 descriptions per image, and coco has 5
 # we basically need to match up descriptions to images
 # cubs also includes bounding boxes for images
+# the original paper normalizes images in the dataset
+# the original paper caps the tokens in a caption to 18
 class imageCaptionDataset(data.Dataset):
-    def __init__(self, captionsDir, imagesDir):
+    def __init__(self, captionsDir, imagesDir, captionToImageRatio=10, imageTransform=None, split='train', maxCaptionLength = 18):
         # load pickle serializations for data grabbing
         # image data includes a list of captions for each image
+        self.captionsDir = captionsDir
+        self.imagesDir = imagesDir
         self.imageData={}
         self.wordToIndex = {}
         self.indexToWord = {}
-        self.captionToImageRatio = 10
-        self.imageTransform = None
-        pass
+        self.captionToImageRatio = captionToImageRatio
+        self.imageTransform = imageTransform
+        # normalizes each channel with mean specified in the first tuple, and standard deviation from the second tuple
+        self.normalize = torch.nn.Sequential(
+            transforms.toTensor(),
+            transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+        )
+        self.maxCaptionLength = maxCaptionLength
 
     def __len__(self):
         # we will return the number of images
@@ -267,13 +281,58 @@ class imageCaptionDataset(data.Dataset):
     def __getitem__(self,index):
         # randomly select an image
         imgData = random.choice(list(self.imageData.values()))
+        # getting class identifier
+        classID = imgData[1]
         # grab a random caption from the list of captions
         randCaption = random.choice(imgData[3])
         # load pixels of image into memory
-        img = Image.open('')
+        img = Image.open(os.path.join(self.imagesDir,imgData[0]))
         # perform any transforms needed on the image
-        img = self.imageTransform(img)
-        return randCaption, img
+        if imgData[2] is not None:
+            bbox=imgData[2]
+            # then bounding boxes, we have cub data
+            width,height = img.size
+            # TODO: understand how below code works with bounding boxes
+            r = int(np.maximum(bbox[2], bbox[3]) * 0.75)
+            center_x = int((2 * bbox[0] + bbox[2]) / 2)
+            center_y = int((2 * bbox[1] + bbox[3]) / 2)
+            y1 = np.maximum(0, center_y - r)
+            y2 = np.minimum(height, center_y + r)
+            x1 = np.maximum(0, center_x - r)
+            x2 = np.minimum(width, center_x + r)
+            img = img.crop([x1, y1, x2, y2])
+
+        if self.imageTransform is not None:
+            img = self.imageTransform(img)
+
+        # normalizing channels of the image
+        img = self.normalize(img)
+
+        # need to do just a tiny bit of work to the caption before returning
+        numWords = len(randCaption)
+        # just padding with zeroes
+        padded = np.zeros((self.maxCaptionLength,1))
+
+        # if the text is longer than 18, we need to rearrange the sentence so it makes sense with 18 tokens
+        # so, all 18 tokens should be in order
+
+        if numWords <= self.maxCaptionLength:
+            # no issues here, our caption is less than the max
+            padded[:numWords,0] = randCaption
+        else:
+            # grabbing indices of words as a list
+            indices = np.arange(numWords)
+            # shuffling the indices
+            np.random.shuffle(indices)
+            # limiting the indices
+            indices = indices[:self.maxCaptionLength]
+            # sorting the indices so the sentence order is preserved
+            indices = np.sort(indices)
+            # now just setting the pad based on the index
+            for i in indices:
+                padded[i,0] = randCaption[i]
+
+        return img, padded, max(numWords,self.maxCaptionLength), classID
 
 
 
