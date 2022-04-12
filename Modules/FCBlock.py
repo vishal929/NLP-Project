@@ -5,8 +5,9 @@ import torch
 class FCBlock(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.fullyConnected = torch.nn.Linear()
+        self.fullyConnected = torch.nn.Linear(100,8192)
 
     def forward(self,x):
         # running fully connected, and then reshaping
-        return self.fullyConnected(x).reshape()
+        # reshaping to batch size x 512 x 4 x 4
+        return self.fullyConnected(x).reshape(x.size(0), 512, 4, 4)
