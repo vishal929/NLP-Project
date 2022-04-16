@@ -335,13 +335,24 @@ class imageCaptionDataset(data.Dataset):
             bbox=imgData[2]
             # then bounding boxes, we have cub data
             width,height = img.size
-            # TODO: understand how below code works with bounding boxes
+            # bbox[0] is left x pixel, bbox[1] is the top y pixel of the bounding box
+            # bbox[2] is the width of the bounding box containing the bird
+            # bbox[3] is the height of the bounding box containing the bird
+            # we do not want to crop the image right to the bird
+            # instead, the paper stackgan mentions they crop bounding boxes of the birds
+            # # so that they have greater than 0.75 object-image size ratios
+            # # therefore, we pick the max width/height of the box and crop 0.25 more of what the dataset preparers
+            # # say to crop
             r = int(np.maximum(bbox[2], bbox[3]) * 0.75)
-            center_x = int((2 * bbox[0] + bbox[2]) / 2)
-            center_y = int((2 * bbox[1] + bbox[3]) / 2)
+            center_x = int(bbox[0] + (bbox[2]/2))
+            center_y = int(bbox[1]+(bbox[3])/2)
+            # new bottom coordinate of the cropped image
             y1 = np.maximum(0, center_y - r)
+            # new top coordinate of the cropped image
             y2 = np.minimum(height, center_y + r)
+            # new left most x coordinate of the cropped image
             x1 = np.maximum(0, center_x - r)
+            # new right most x coordinate of the cropped image
             x2 = np.minimum(width, center_x + r)
             img = img.crop([x1, y1, x2, y2])
             # showing image here just for testing
