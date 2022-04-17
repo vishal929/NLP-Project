@@ -30,6 +30,9 @@ class cnnEncoder(torch.nn.Module):
         self.initWeights()
 
     def forward(self, x):
+        # input of batch x 3 x 299 x 299
+        x = torch.nn.functional.interpolate(x, size=(299,299), mode='bilinear', align_corners=False)
+        # processing input through inception
         x = self.inceptionUpToLocalFeatures(x)
         # extracting local features
         localFeatures = x
