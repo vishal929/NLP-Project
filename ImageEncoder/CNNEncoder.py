@@ -80,8 +80,8 @@ class cnnEncoder(torch.nn.Module):
     # initializing weights of the last layers (layers that the authors add that are not part of inception v3)
     def initWeights(self):
         # authors initialize uniformly from -0.1 to 0.1
-        self.embedLocalFeatures.weight.data.uniform(-0.1,0.1)
-        self.embedGlobalFeatures.weight.data.uniform(-0.1,0.1)
+        self.embedLocalFeatures.weight.data.uniform_(-0.1,0.1)
+        self.embedGlobalFeatures.weight.data.uniform_(-0.1,0.1)
 
 
 
