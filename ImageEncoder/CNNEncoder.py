@@ -22,8 +22,8 @@ class cnnEncoder(torch.nn.Module):
         # defining additional layers that the author adds for processing local and global features
         # # extracted from inception v3
 
-        # default stride is 1 and padding is 0 and bias is on by default also
-        self.embedLocalFeatures = torch.nn.Conv2d(768,self.numFeatures,kernel_size=1)
+        # default stride is 1 and padding is 0 and bias should be false
+        self.embedLocalFeatures = torch.nn.Conv2d(768,self.numFeatures,kernel_size=1,bias=False)
         self.embedGlobalFeatures = torch.nn.Linear(2048,self.numFeatures)
 
         # initializing weights for trainable (non-inception) parts
