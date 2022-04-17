@@ -1,4 +1,7 @@
 import torch
+import sys
+sys.path.append('../Modules')
+from Discriminator import Discriminator
 # we have normalized adversarial loss and weighted damsm loss components
 # LOOK OVER SCALING HERE , NOT SURE ABOUT THAT
 
@@ -93,10 +96,54 @@ def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenSco
     # adding up all the losses to form damsm
     return localLossOne + localLossTwo + globalLossOne + globalLossTwo
 
+def adv_D(D, x, x_hat, s, s_hat, lambda_MA, p):
+  """
+  Computes the advesarial loss for the Discriminator
+  Args:
+    D (Discriminator object): Discriminator
+    x (torch.Tensor, requires_grad=T): True image with shape (batch_size, height, width, channels)
+    x_hat (torch.Tensor): Fake generated image with same shape as x
+    s (torch.Tensor, requires_grad=T): True text description with shape (batch_size, T_s)
+    s_hat (torch.Tensor): Mismatched text description with same shape as s
+    lambda_MA (float) : Weight of MA-GP loss
+    p (float) : p hyperparameter
+  Return:
+    Loss_adv_D (float / torch.Tensor): Computed adversarial loss for Discriminator
+    D_fake (torch.Tensor, requires_grad=T): Discriminator decisions for fake generated images with shape (batch_size, UNKNOWN_YET)
+  """
+  D_real = D(x,s)
+  D_fake = D(x_hat,s)
 
+  #Expected loss for failing to recognize real images (real loss)
+  E_real = torch.maximum(0.0, 1.0 - D_real).mean()
+  #Expected loss for getting fooled by generator
+  E_fool = torch.maximum(0.0, 1.0 + D_fake).mean()
+  #Expected loss for getting wrong text pairing
+  E_mismatch = torch.maximum(0.0, 1.0 + D(x, s_hat)).mean()
 
-def adversarialLoss():
-    pass
+  #Calculate gradients of decision w.r.t. both x and s
+  D_real.backward(torch.ones_like(D_real))
+  #Obtain calculated gradients and use them to get Eucl norms
+  grad_D_real_x = x.grad
+  grad_D_real_s = s.grad
+  grad_norm_x = torch.dot(grad_D_real_x.T, grad_D_real_x)
+  grad_norm_s = torch.dot(grad_D_real_s.T, grad_D_real_s)
+  #Expected MA-GP loss
+  E_MA = torch.pow(grad_norm_x + grad_norm_s, p).mean()
+
+  #Final weighted adv loss for discriminator
+  Loss_adv_D = E_real + ((E_fool + E_mismatch) / 2.0) + lambda_MA*(E_MA)
+  return Loss_adv_D, D_fake
+
+def adv_G(D_fake):
+    """
+    Computes the adversarial loss for the generator
+    Args:
+        D_fake (torch.Tensor, requires_grad=T): discriminator decisions for fake generated images
+    Return:
+        Loss_adv_G (float / torch.Tensor): Computed adversarial loss for generator
+    """
+    return -1.0*(D_fake).mean()
 
 # total loss for the generator consists of an adversarial loss + a weighted damsm loss
 def totalLoss(damsmWeight, adversarialLoss, damsmLoss):
