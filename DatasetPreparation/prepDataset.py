@@ -356,7 +356,7 @@ class imageCaptionDataset(data.Dataset):
             x2 = np.minimum(width, center_x + r)
             img = img.crop([x1, y1, x2, y2])
             # showing image here just for testing
-            img.show()
+            #img.show()
 
         if self.imageTransform is not None:
             img = self.imageTransform(img)
