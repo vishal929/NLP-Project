@@ -77,7 +77,7 @@ class bilstmEncoder(torch.nn.Module):
         # gets a reference to some parameter (this is just for getting data type and device for the parameter easily)
         weightDataType = next(self.parameters()).data
 
-        finalHiddenStateParams = torch.Variable(weightDataType.new(2,batchSize,self.numHiddenFeatures).zero_())
-        cellStateParams = torch.Variable(weightDataType.new(2,batchSize,self.numHiddenFeatures).zero_())
+        finalHiddenStateParams = weightDataType.new(2,batchSize,self.numHiddenFeatures).zero_()
+        cellStateParams = weightDataType.new(2,batchSize,self.numHiddenFeatures).zero_()
 
         return finalHiddenStateParams, cellStateParams
