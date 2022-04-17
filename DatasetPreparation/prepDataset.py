@@ -170,7 +170,7 @@ def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
         '''
         # tokenizing captions
         processedCaptions=[]
-        captionFile = open((sourceCaptionsDir + '/' + trainTextImageData[trainImageID][0])[:-3]+'txt')
+        captionFile = open((sourceCaptionsDir + '/' + trainTextImageData[trainImageID][0])[:-3]+'txt',encoding='utf8')
         captions = captionFile.readlines()
         for caption in captions:
             # tokenize captions
@@ -201,7 +201,7 @@ def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
         '''
         # tokenize captions
         processedCaptions=[]
-        captionFile = open((sourceCaptionsDir + '/' + testTextImageData[testImageID][0])[:-3] + 'txt')
+        captionFile = open((sourceCaptionsDir + '/' + testTextImageData[testImageID][0])[:-3] + 'txt', encoding='utf8')
         captions = captionFile.readlines()
         for caption in captions:
             # tokenize caption
@@ -391,7 +391,7 @@ class imageCaptionDataset(data.Dataset):
 
         return img, padded, max(numWords,self.maxCaptionLength), classID
 
-''' CUB TEST BELOW WORKS IN MY TESTING
+'''
 # place where cub images should be and where cub captions should be
 cubImageDir = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/CUB_200_2011/CUB_200_2011/' \
               'images'
@@ -407,8 +407,7 @@ cubClasses = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-20
 cubTrainTestSplit = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                   'CUB_200_2011/CUB_200_2011/train_test_split.txt'
 
-#setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses)
-
+setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses)
 # testing a loader
 CUBDataset = imageCaptionDataset(cubCaptionDir,cubImageDir,10,None,'train',18)
 
@@ -422,7 +421,6 @@ for paddedIntArray in paddedCaption:
         print(CUBDataset.indexToWord[wordInt] + ' ')
 print(img)
 '''
-
 
 
 
