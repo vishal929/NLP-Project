@@ -14,24 +14,32 @@ from Modules.Discriminator import Discriminator
 from Modules.Generator import  Generator
 from TextEncoder.RNNEncoder import bilstmEncoder
 from ImageEncoder.CNNEncoder import cnnEncoder
+from tqdm import tqdm
 
 
 
 def train(dataloader, generator, discriminator, textEncoder, imageEncoder, device, optimizerG, optimizerD,
-          epochNum, batch_size, discriminatorLoss, generatorLoss):
+          epochNum, batch_size, discriminatorLoss, generatorLoss, maxEpoch, trainSaveInterval):
 
     # training
+    for epoch in tqdm(range(epochNum+1,maxEpoch+1)):
+        dataIterator = iter(dataloader)
+        for step in tqdm(range(len(dataIterator))):
+            batch = dataIterator.next()
 
-    # saving training status at certain intervals
-    torch.save({
-        'epoch': epochNum,
-        'generator_state_dict': generator.state_dict(),
-        'optimizer_generator_state_dict': optimizerG.state_dict(),
-        'discriminator_state_dict': discriminator.state_dict(),
-        'optimizer_discriminator_state_dict': optimizerD.state_dict(),
-        'gLoss': generatorLoss,
-        'dLoss': discriminatorLoss
-    }, 'trainingCheckpoint.pth')
+            # getting encodings
+        # saving status when we hit the save interval
+        if epoch % trainSaveInterval == 0 :
+            # saving training status at certain intervals
+            torch.save({
+                'epoch': epochNum,
+                'generator_state_dict': generator.state_dict(),
+                'optimizer_generator_state_dict': optimizerG.state_dict(),
+                'discriminator_state_dict': discriminator.state_dict(),
+                'optimizer_discriminator_state_dict': optimizerD.state_dict(),
+                'gLoss': generatorLoss,
+                'dLoss': discriminatorLoss
+            }, 'cubTrainingCheckpoint.pth')
     return 0
 
 # transform for images
@@ -162,8 +170,8 @@ numEpoch = 0
 optimizerG = torch.optim.Adam(generator.parameters(),lr=0.0001, betas=(0.0,0.9))
 optimizerD = torch.optim.Adam(discriminator.parameters(),lr=0.0004, betas=(0.0, 0.9))
 
-# loading training status
-checkpoint = torch.load('trainingCheckpoint.pth')
+# loading training status for cub
+checkpoint = torch.load('cubTrainingCheckpoint.pth')
 
 generator.load_state_dict(checkpoint['generator_state_dict'])
 discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
@@ -174,8 +182,9 @@ discriminatorLoss = checkpoint['dLoss']
 numEpoch = checkpoint['epoch']
 
 # training loop
+# saving state every 10 epochs
 train(cubDataLoader, generator, discriminator,text_encoder, image_encoder, device, optimizerG, optimizerD,
-      numEpoch, 24, discriminatorLoss, generatorLoss)
+      numEpoch, 24, discriminatorLoss, generatorLoss,300, 10)
 
 
 
