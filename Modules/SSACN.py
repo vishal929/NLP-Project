@@ -18,6 +18,9 @@ class SSACNBlock(nn.Module):
 
     def forward(self, image_features, text_features, mask=None):
         upscaled_image_features = f.interpolate(image_features, scale_factor=2)
+        # h, w = upscaled_image_features.size(2), upscaled_image_features.size(3)
+        # upscaled_image_features = f.interpolate(image_features, size=(h*2, w*2, ch), mode='bilinear', align_corners=True)
+        # stage_mask = F.interpolate(stage_mask, size=(hh, ww), mode='bilinear', align_corners=True)
         mask = self.mask_predictor(upscaled_image_features)
         output_image_features = self.sscbn(upscaled_image_features, text_features, mask)
 
