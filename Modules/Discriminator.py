@@ -16,18 +16,19 @@ class Discriminator(torch.nn.Module):
       super(Discriminator,self).__init__()
       self.text_shape = text_shape
       #First 3x3 convolution with stride 1 -> (batch_size, height, width, n_c)
-      self.conv1 = torch.nn.Conv2d(in_dim[-1], n_c, 3, 1)
+      self.conv1 = torch.nn.Conv2d(3, n_c, 3, 1,1)
 
       #If the amount to scale the outgoing number of features is not provided, use default
       if(downblock_scales is None):
-        downblock_scales = [2,4,8, 16, 16, 16, 2, 2]
+        downblock_scales = [1,2,4,8, 16, 16, 16,2,2]
       
       #Initialize downblocks
       self.downblocks_l = torch.nn.ModuleList()
       prev_scale = 1
-      for i in range(len(downblock_scales)-2):
+      for i in range(len(downblock_scales)-3):
         curr_scale = downblock_scales[i]
-        self.downblocks_l.append(DownBlock(n_c*prev_scale, n_c*curr_scale))
+        next_scale = downblock_scales[i+1]
+        self.downblocks_l.append(DownBlock(n_c*curr_scale, n_c*next_scale))
         prev_scale = curr_scale
       
       #Initialize for Decide section
@@ -52,13 +53,20 @@ class Discriminator(torch.nn.Module):
       x = downblock_layer(x)
 
     #Process text input and concatenate to image features along height
-    #Input text is shape (batch_size, padded_text_length=18)
-    #Image should now have shape (batch_size, 4, 4, n_c*16=1024)
-    h,w = x.size()[1], x.size()[2]
+
+    # image actually (batch_size, 1024,4,4)
+    # sentence dimension is (batch_size, 256)
+    print(x.shape)
+    print(s.shape)
     #Replicate text across channels, maintaining same batch_size
-    s.view((-1, 1, 1, self.text_shape[-1])).repeat((1, h, w, 1))
-    #Concatenate along the channels dimension
-    x = torch.cat(x, s, dim=-1)
+    # unsqueezing sentence to add dimensions after features -> (batchsize,256,1,1)
+    s = s.unsqueeze(2)
+    s = s.unsqueeze(3)
+    # repeating features along 3rd and 4th dimensions to match shape
+    s = s.repeat(1,1,4,4)
+    print(s.shape)
+    #Concatenate along the channels dimension (last 2 dims are h,w so -3 dim is channel)
+    x = torch.cat((x, s), dim=-3)
 
     #Run rest of conv layers on concatenated output
     x = self.conv_rep1(x)

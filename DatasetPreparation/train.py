@@ -40,7 +40,11 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
             # resetting bilstm encoder hidden state
             newHidden = textEncoder.initHiddenStates(batch_size)
 
+            wordEmbeddings=None
+            sentEmbeddings=None
+
             # getting embeddings
+           # with torch.no_grad():
             wordEmbeddings, sentEmbeddings = textEncoder(trainCaptions,captionLengths,newHidden)
 
             # detaching so gradient doesnt flow back to textEncoder
@@ -49,13 +53,25 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
 
             # Make standard gaussian noise
             z_shape = (batch_size, 100)
-            with torch.no_grad():
-                z = torch.normal(0.0, torch.ones(z_shape)).cuda()
+            #with torch.no_grad():
+            z = torch.normal(0.0, torch.ones(z_shape)).cuda()
 
             # Forward pass for generator to get generated imgs conditioned on embedded text
             x_fake = generator(z, sentEmbeddings)
 
-            #realOutput = discriminator(trainImages)
+            # generator does not need to update with discriminator (diff objectives)
+            x_fake_features = x_fake
+            #x_fake_features = x_fake.detach()
+
+            # 0 optimizer gradients before computing loss
+            optimizerD.zero_grad()
+            # Compute advesarial loss for discriminator
+            L_advD, D_fake = adv_D(D=discriminator,
+                                   opt=optimizerD,
+                                   x=trainImages,
+                                   x_hat=x_fake_features,
+                                   s=sentEmbeddings,
+                                   lambda_MA=2, p=6)
 
 
 
@@ -128,7 +144,7 @@ if __name__ == '__main__':
     prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
 
     # grabbing dataset
-    batchSize = 12
+    batchSize = 6
     cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir,10, transform, 'train', 18)
 
     cubDataLoader = DataLoader(cubDataset,batch_size=batchSize, drop_last=True, shuffle=True, num_workers=2)
@@ -254,7 +270,7 @@ if __name__ == '__main__':
     # training loop
     # saving state every 10 epochs
     train(cubDataLoader, generator, discriminator,text_encoder, image_encoder, device, optimizerG, optimizerD,
-          numEpoch, 12, discriminatorLoss, generatorLoss,300, 10)
+          numEpoch, batchSize, discriminatorLoss, generatorLoss,300, 10)
 
 
 

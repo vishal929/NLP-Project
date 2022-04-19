@@ -210,6 +210,53 @@ def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenSco
     # returning losses
     return localLossOne , localLossTwo , globalLossOne ,globalLossTwo
 
+
+def adv_D(D, opt, x, x_hat, s, lambda_MA, p):
+    """
+    Computes the advesarial loss for the Discriminator
+    Args:
+      D (Discriminator object): Discriminator
+      opt (Discriminator Optimizer): Optimizer
+      x (torch.Tensor, requires_grad=T): True image with shape (batch_size, channels,  height, width)
+      x_hat (torch.Tensor): Fake generated image with same shape as x
+      s (torch.Tensor, requires_grad=T): True text embedding with shape (batch_size, T_s)
+      lambda_MA (float) : Weight of MA-GP loss
+      p (float) : p hyperparameter
+    Return:
+      Loss_adv_D (float / torch.Tensor): Computed adversarial loss for Discriminator
+      D_fake (torch.Tensor, requires_grad=T): Discriminator decisions for fake generated images with shape (batch_size, UNKNOWN_YET)
+    """
+    D_real = D(x, s)
+    D_fake = D(x_hat, s)
+
+    # Expected loss for failing to recognize real images (real loss)
+    E_real = torch.maximum(torch.zeros(D_real.shape).cuda(), 1.0 - D_real).mean()
+    # Expected loss for getting fooled by generator
+    E_fool = torch.maximum(torch.zeros(D_fake.shape).cuda(), 1.0 + D_fake).mean()
+    # Expected loss for getting wrong text pairing
+    # Mismatched text
+    s_hat = s[:(s.size(0) - 1)]
+    x_mismatch = x[1:]
+    mismatchedErrors = D(x_mismatch,s_hat)
+    E_mismatch = torch.maximum(torch.zeros(mismatchedErrors.shape).cuda(), 1.0 + mismatchedErrors).mean()
+
+    # Calculate gradients of decision w.r.t. both x and s
+    D_real.backward(torch.ones_like(D_real))
+    # Obtain calculated gradients and use them to get Eucl norms
+    grad_D_real_x = x.grad
+    grad_D_real_s = s.grad
+    print(grad_D_real_s)
+    print(grad_D_real_x)
+    opt.zero_grad()
+    grad_norm_x = torch.dot(grad_D_real_x.T, grad_D_real_x)
+    grad_norm_s = torch.dot(grad_D_real_s.T, grad_D_real_s)
+    # Expected MA-GP loss
+    E_MA = torch.pow(grad_norm_x + grad_norm_s, p).mean()
+
+    # Final weighted adv loss for discriminator
+    Loss_adv_D = E_real + ((E_fool + E_mismatch) / 2.0) + lambda_MA * (E_MA)
+    return Loss_adv_D, D_fake
+'''
 def adv_D(D, x, x_hat, s, s_hat, lambda_MA, p):
   """
   Computes the advesarial loss for the Discriminator
@@ -248,6 +295,7 @@ def adv_D(D, x, x_hat, s, s_hat, lambda_MA, p):
   #Final weighted adv loss for discriminator
   Loss_adv_D = E_real + ((E_fool + E_mismatch) / 2.0) + lambda_MA*(E_MA)
   return Loss_adv_D, D_fake
+'''
 
 def adv_G(D_fake):
     """
