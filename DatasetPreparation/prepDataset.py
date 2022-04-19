@@ -389,7 +389,7 @@ class imageCaptionDataset(data.Dataset):
             for index,wordIndex in enumerate(indices):
                 padded[index,0] = randCaption[wordIndex]
 
-        return img, padded, max(numWords,self.maxCaptionLength), classID
+        return img, padded, min(numWords,self.maxCaptionLength), classID
 
 '''
 # place where cub images should be and where cub captions should be
