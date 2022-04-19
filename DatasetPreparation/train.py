@@ -25,9 +25,31 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
     for epoch in tqdm(range(epochNum+1,maxEpoch+1)):
         dataIterator = iter(dataloader)
         for step in tqdm(range(len(dataIterator))):
-            batch = dataIterator.next()
+            trainImages, trainCaptions, captionLengths, classID  = dataIterator.next()
+            trainCaptions = trainCaptions.type(torch.LongTensor)
+            captionLengths = captionLengths.type(torch.LongTensor)
 
-            # getting encodings
+            # sending data to gpu
+            trainImages = trainImages.cuda()
+            trainCaptions = trainCaptions.cuda()
+            captionLengths = captionLengths.cuda()
+
+            # resetting bilstm encoder hidden state
+            newHidden = textEncoder.initHiddenStates(batch_size)
+
+            # getting embeddings
+            wordEmbeddings, sentEmbeddings = textEncoder(trainCaptions,captionLengths,newHidden)
+
+            # detaching so gradient doesnt flow back to textEncoder
+            wordEmbeddings = wordEmbeddings.detach()
+            sentEmbeddings = sentEmbeddings.detach()
+
+            realOutput = discriminator(trainImages)
+
+
+
+
+
         # saving status when we hit the save interval
         if epoch % trainSaveInterval == 0 :
             # saving training status at certain intervals
