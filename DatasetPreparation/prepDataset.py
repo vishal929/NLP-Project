@@ -53,7 +53,7 @@ def establishVocabulary(captionList):
 # imageIDPath is the path to the file mapping filenames of images to imageIDs
 # imageClassPath is the path to the file mapping filenames of images to their classes
 def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
-             imageIDPath, imageClassPath):
+             imageIDPath, imageClassPath, picklePath):
     # creating holder folders for train and test images and captions
     # NOTE, WE MAY NOT NEED THE BELOW DIRECTORIES, WE JUST HAVE TO HAVE A STANDARDIZED LOCATION FOR CUB IMAGES AND CAPTIONS
     '''
@@ -170,7 +170,7 @@ def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
         '''
         # tokenizing captions
         processedCaptions=[]
-        captionFile = open((sourceCaptionsDir + '/' + trainTextImageData[trainImageID][0])[:-3]+'txt',encoding='utf8')
+        captionFile = open((os.path.join(sourceCaptionsDir,trainTextImageData[trainImageID][0]))[:-3]+'txt',encoding='utf8')
         captions = captionFile.readlines()
         for caption in captions:
             # tokenize captions
@@ -201,7 +201,7 @@ def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
         '''
         # tokenize captions
         processedCaptions=[]
-        captionFile = open((sourceCaptionsDir + '/' + testTextImageData[testImageID][0])[:-3] + 'txt', encoding='utf8')
+        captionFile = open((os.path.join(sourceCaptionsDir,testTextImageData[testImageID][0]))[:-3] + 'txt', encoding='utf8')
         captions = captionFile.readlines()
         for caption in captions:
             # tokenize caption
@@ -245,22 +245,22 @@ def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
 
 
     # save dictionary mappings for training
-    with open('./CUBMetadata/trainImagesCUB.pickle','wb') as handle:
+    with open(os.path.join(picklePath,'trainImagesCUB.pickle'),'wb') as handle:
         pickle.dump(trainTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('./CUBMetadata/testImagesCUB.pickle','wb') as handle:
+    with open(os.path.join(picklePath,'testImagesCUB.pickle'),'wb') as handle:
         pickle.dump(testTextImageData,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('./CUBMetadata/CUBWordToIndex.pickle','wb') as handle:
+    with open(os.path.join(picklePath,'CUBWordToIndex.pickle'),'wb') as handle:
         pickle.dump(wordToIndex, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('./CUBMetadata/CUBIndexToWord.pickle','wb') as handle:
+    with open(os.path.join(picklePath,'CUBIndexToWord.pickle'),'wb') as handle:
         pickle.dump(indexToWord, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('./CUBMetadata/CUBTrainID.pickle','wb') as handle:
+    with open(os.path.join(picklePath,'CUBTrainID.pickle'),'wb') as handle:
         pickle.dump(trainImageIDs,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open('./CUBMetadata/CUBTestID.pickle','wb') as handle:
+    with open(os.path.join(picklePath,'CUBTestID.pickle'),'wb') as handle:
         pickle.dump(testImageIDs,handle,protocol=pickle.HIGHEST_PROTOCOL)
 
 
@@ -278,31 +278,31 @@ def setupCOCO():
 # the original paper normalizes images in the dataset
 # the original paper caps the tokens in a caption to 18
 class imageCaptionDataset(data.Dataset):
-    def __init__(self, captionsDir, imagesDir, captionToImageRatio=10, imageTransform=None, split='train', maxCaptionLength = 18):
+    def __init__(self, captionsDir, imagesDir, pickleDir, captionToImageRatio=10, imageTransform=None, split='train', maxCaptionLength = 18):
         # load pickle serializations for data grabbing
         # THIS ASSUMES THAT PICKLE DATA IS AVAILABLE
         # image data includes a list of captions for each image
         self.captionsDir = captionsDir
         self.imagesDir = imagesDir
-        if split == 'train' and os.path.basename(os.path.dirname(imagesDir))=='CUB_200_2011':
+        if split == 'train':
             # cub train data mappings
-            with open('./CUBMetadata/trainImagesCUB.pickle','rb') as obj:
+            with open(os.path.join(pickleDir,'trainImagesCUB.pickle'),'rb') as obj:
                 self.imageData = pickle.load(obj,encoding='bytes')
-            with open('./CUBMetadata/CUBWordToIndex.pickle','rb') as obj:
+            with open(os.path.join(pickleDir,'CUBWordToIndex.pickle'),'rb') as obj:
                 self.wordToIndex = pickle.load(obj, encoding='bytes')
-            with open('./CUBMetadata/CUBIndexToWord.pickle','rb') as obj:
+            with open(os.path.join(pickleDir,'CUBIndexToWord.pickle'),'rb') as obj:
                 self.indexToWord = pickle.load(obj,encoding='bytes')
-            with open('./CUBMetadata/CUBTrainID.pickle','rb') as obj:
+            with open(os.path.join(pickleDir,'CUBTrainID.pickle'),'rb') as obj:
                 self.IDList = pickle.load(obj,encoding='bytes')
         elif split == 'test' and os.path.basename(os.path.dirname(imagesDir))=='CUB_200_2011':
             # cub test data mappings
-            with open('./CUBMetadata/testImagesCUB.pickle', 'rb') as obj:
+            with open(os.path.join(pickleDir, 'testImagesCUB.pickle'), 'rb') as obj:
                 self.imageData = pickle.load(obj, encoding='bytes')
-            with open('./CUBMetadata/CUBWordToIndex.pickle', 'rb') as obj:
+            with open(os.path.join(pickleDir, 'CUBWordToIndex.pickle'), 'rb') as obj:
                 self.wordToIndex = pickle.load(obj, encoding='bytes')
-            with open('./CUBMetadata/CUBIndexToWord.pickle', 'rb') as obj:
+            with open(os.path.join(pickleDir, 'CUBIndexToWord.pickle'), 'rb') as obj:
                 self.indexToWord = pickle.load(obj, encoding='bytes')
-            with open('./CUBMetadata/CUBTestID.pickle', 'rb') as obj:
+            with open(os.path.join(pickleDir, 'CUBTestID.pickle'), 'rb') as obj:
                 self.IDList = pickle.load(obj, encoding='bytes')
         self.captionToImageRatio = captionToImageRatio
         self.imageTransform = imageTransform
@@ -328,7 +328,8 @@ class imageCaptionDataset(data.Dataset):
         # grab a random caption from the list of captions
         randCaption = random.choice(imgData[3])
         # load pixels of image into memory
-        img = Image.open(self.imagesDir + '/' + imgData[0])
+        img = Image.open(os.path.normpath(os.path.join(self.imagesDir,imgData[0]).replace('\\','/'))).convert('RGB')
+        #print(imgData[0])
 
         # perform any transforms needed on the image
         if imgData[2] is not None:
@@ -391,8 +392,8 @@ class imageCaptionDataset(data.Dataset):
 
         return img, padded, min(numWords,self.maxCaptionLength), classID
 
-'''
 # place where cub images should be and where cub captions should be
+'''
 cubImageDir = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/CUB_200_2011/CUB_200_2011/' \
               'images'
 cubCaptionDir = '../CUBS Dataset/Cubs-2011/bird_metadata/birds/text/text'

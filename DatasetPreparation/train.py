@@ -1,4 +1,5 @@
 # simply file for local training
+import os
 from collections import OrderedDict
 
 import torch
@@ -8,14 +9,13 @@ import sys
 import matplotlib
 from matplotlib import pyplot as plt
 import numpy as np
-import prepDataset
+import DatasetPreparation.prepDataset as prepData
 from Losses.Loss import adv_D, adv_G
 from Modules.Discriminator import Discriminator
 from Modules.Generator import Generator
 from TextEncoder.RNNEncoder import bilstmEncoder
 from ImageEncoder.CNNEncoder import cnnEncoder
 from tqdm import tqdm
-
 
 
 def train(dataloader, generator, discriminator, textEncoder, imageEncoder, device, optimizerG, optimizerD,
@@ -85,32 +85,59 @@ if __name__ == '__main__':
             transforms.RandomHorizontalFlip()])
 
     # grab dataset
+    cubImageDir = os.path.join(os.getcwd(),'..','CUBS Dataset','Cubs-2011','cub-200-2011-20220408T185459Z-001',
+                               'cub-200-2011','CUB_200_2011','CUB_200_2011','images')
+    '''
     cubImageDir = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/CUB_200_2011/CUB_200_2011/' \
                   'images'
-    cubCaptionDir = '../CUBS Dataset/Cubs-2011/bird_metadata/birds/text/text'
+    '''
+    cubCaptionDir = os.path.join(os.getcwd(),'..','CUBS Dataset','Cubs-2011','bird_metadata','birds','text','text')
 
     # place where cub metadata is
+    cubBoundingBoxFile = os.path.join(os.getcwd(),'..','CUBS Dataset','Cubs-2011','cub-200-2011-20220408T185459Z-001',
+                               'cub-200-2011','CUB_200_2011','CUB_200_2011','bounding_boxes.txt')
+    '''
     cubBoundingBoxFile = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                          'CUB_200_2011/CUB_200_2011/bounding_boxes.txt'
+    '''
+    '''
     cubFileMappings = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                       'CUB_200_2011/CUB_200_2011/images.txt'
+    '''
+    cubFileMappings = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+                                      'cub-200-2011-20220408T185459Z-001',
+                                      'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'images.txt')
+    cubClasses = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+                                   'cub-200-2011-20220408T185459Z-001',
+                                   'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'image_class_labels.txt')
+    '''
     cubClasses = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                  './CUB_200_2011/image_class_labels.txt'
+    '''
+    cubTrainTestSplit = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+                              'cub-200-2011-20220408T185459Z-001',
+                              'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'train_test_split.txt')
+    '''
     cubTrainTestSplit = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                         'CUB_200_2011/CUB_200_2011/train_test_split.txt'
+    '''
+
+    pickleDir = os.path.join(os.getcwd(),'CUBMetadata')
 
     # setting up dataset if not setup already (i.e pickles dont exist)
+    prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
 
     # grabbing dataset
-    batchSize = 24
-    cubDataset = prepDataset.imageCaptionDataset(cubCaptionDir, cubImageDir, 10, transform, 'train', 18)
+    batchSize = 12
+    cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir,10, transform, 'train', 18)
 
-    cubDataLoader = DataLoader(cubDataset,batch_size=batchSize, drop_last=True, shuffle=True, num_workers=4)
+    cubDataLoader = DataLoader(cubDataset,batch_size=batchSize, drop_last=True, shuffle=True, num_workers=2)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # initializing modules needed in framework
-    z_shape = (batchSize,100)
+    # z_shape = (batchSize, 100)
+    z_shape = (64,100)
     in_dim = (batchSize, 256, 256, 3)
     generator = Generator(z_shape=z_shape).to(device)
     discriminator = Discriminator(in_dim).to(device)
@@ -227,7 +254,7 @@ if __name__ == '__main__':
     # training loop
     # saving state every 10 epochs
     train(cubDataLoader, generator, discriminator,text_encoder, image_encoder, device, optimizerG, optimizerD,
-          numEpoch, 24, discriminatorLoss, generatorLoss,300, 10)
+          numEpoch, 12, discriminatorLoss, generatorLoss,300, 10)
 
 
 
