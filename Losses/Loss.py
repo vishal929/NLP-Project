@@ -9,30 +9,39 @@ import Modules.Discriminator as Discriminator
 # LOOK OVER SCALING HERE , NOT SURE ABOUT THAT
 
 def calculateAttentionMatchingScoreBatchWrapper(sentenceBatch, wordMatrixBatch, localImageBatch, globalImageBatch,
-                                                match_labels,
+                                                match_labels, sequenceLengths,
                                                 gammaOne=5, gammaTwo = 5):
     # basically we take a matrix, broadcast it to match captionBatches, then calculate the scores
     # this will compute matrix to batch multiplication
     # we need this to calculate dissimilarity scores
     localScores=[]
     globalScores=[]
-    for i in range(len(localImageBatch)):
+    #print(sequenceLengths)
+    for i in range(len(sentenceBatch)):
         # rqdvector will become row of local score matrix
         # globalAttentionVector will become row of global score matrix
+        RQDVector, globalAttentionVector = calculateAttentionMatchingScore(sentenceBatch[i].unsqueeze(0)
+                                                                           , wordMatrixBatch[i].unsqueeze(0)
+                                                                           , localImageBatch
+                                                                           , sequenceLengths[i]
+                                                                           , globalImageBatch
+                                                                           , gammaOne, gammaTwo)
+        '''
         RQDVector, globalAttentionVector =calculateAttentionMatchingScore(sentenceBatch,wordMatrixBatch
                                                                           ,localImageBatch[i].unsqueeze(0)
                                                                           ,globalImageBatch[i].unsqueeze(0)
                                                                           ,gammaOne, gammaTwo)
+        '''
         localScores.append(RQDVector)
         globalScores.append(globalAttentionVector)
         #print(globalAttentionVector)
 
     # now we have score matrices for local and global matching
     # we can compute directly the damsm loss
-    # concatenating localscores and global scores so each element is a row
-    localMatrix = torch.stack(localScores,dim=0)
+    # concatenating localscores and global scores so each element is a column
+    localMatrix = torch.stack(localScores,dim=1)
     #print(localMatrix)
-    globalMatrix = torch.stack(globalScores,dim=0)
+    globalMatrix = torch.stack(globalScores,dim=1)
     #print(globalMatrix)
     return calculateDAMSMLoss(localMatrix,globalMatrix, match_labels)
 
@@ -54,7 +63,9 @@ def calculateAttentionMatchingScoreBatchWrapper(sentenceBatch, wordMatrixBatch, 
 # word embeddings have shape: (batch, features, sequenceLength) -> i.e word embeddings are columns
 # localImage output has shape: (batch, numFeatures, 17 , 17)
 # globalImage output has shape: (batch,numFeatures)
-def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, localImagePerceptronOutput, globalImagePerceptronOutput,
+def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, localImagePerceptronOutput,
+              sequenceLength,
+              globalImagePerceptronOutput,
               gammaOne=5, gammaTwo=5):
     # get similarity matrix of words and subregions
     # s = e^T v
@@ -62,6 +73,15 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
     #print(localImagePerceptronOutput.flatten(start_dim=2).shape)
 
     # important! we need to calculate matching score between an image and every caption
+
+    # sentenceEmbedding is of shape (1,256)
+    # wordMatrixEmbedding is of shape(1,256,sequenceLength)
+
+    # reducing the sequenceLength of word embedding to the true value
+    wordMatrixEmbedding = wordMatrixEmbedding[:,:,:sequenceLength]
+    # repeating word matrices and sentence embeddings to match image batch
+    #sentenceEmbedding = sentenceEmbedding.repeat(globalImagePerceptronOutput.shape[0],1)
+    wordMatrixEmbedding = wordMatrixEmbedding.repeat(localImagePerceptronOutput.shape[0],1,1)
 
     # transposing the matrix of word embeddings for each batch to have shape (batch,sequenceLength,features)
     # flattening localImage to have shape (batch,numFeatures,289)
@@ -133,6 +153,7 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
 
     #print(torch.log(torch.sum(torch.exp(5.0*relevanceVector),dim=1)))
     RQD = torch.logsumexp(relevanceVector*gammaTwo,dim=1)
+    #print(RQD.shape)
     #RQD = torch.log(torch.sum(torch.exp(5.0*relevanceVector),dim=1))
 
     # getting entire attention driven matching score between
@@ -151,8 +172,8 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
     #print(globalImagePerceptronOutput.shape)
     #print(sentenceEmbedding.shape)
     #print(globalImagePerceptronOutput)
-    globalAttentionScore = torch.matmul(globalImagePerceptronOutput,sentenceEmbedding.transpose(0,1)).squeeze(dim=0)
-    #print(globalAttentionScore)
+    globalAttentionScore = torch.matmul(globalImagePerceptronOutput,sentenceEmbedding.transpose(0,1)).squeeze(1)
+    #print(globalAttentionScore.shape)
     globalAttentionScore /= torch.norm(globalImagePerceptronOutput,dim=1).clamp(1e-8)
     globalAttentionScore /= torch.norm(sentenceEmbedding,dim=1).clamp(1e-8)
     return RQD, globalAttentionScore
@@ -226,6 +247,7 @@ def adv_D(D, opt, x, x_hat, s, lambda_MA, p):
       Loss_adv_D (float / torch.Tensor): Computed adversarial loss for Discriminator
       D_fake (torch.Tensor, requires_grad=T): Discriminator decisions for fake generated images with shape (batch_size, UNKNOWN_YET)
     """
+    #print(x.shape)
     D_real = D(x, s)
     D_fake = D(x_hat, s)
 
@@ -242,11 +264,14 @@ def adv_D(D, opt, x, x_hat, s, lambda_MA, p):
 
     # Calculate gradients of decision w.r.t. both x and s
     D_real.backward(torch.ones_like(D_real))
+    #print(D_real.grad)
+    #testGrad = [torch.autograd.grad(outputs=out,inputs=x[0],retain_graph=True)[0][i] for i,out in enumerate(D_real[0])]
+    #print(testGrad)
     # Obtain calculated gradients and use them to get Eucl norms
     grad_D_real_x = x.grad
     grad_D_real_s = s.grad
-    print(grad_D_real_s)
-    print(grad_D_real_x)
+    #print(grad_D_real_s.shape)
+    #print(grad_D_real_x.shape)
     opt.zero_grad()
     grad_norm_x = torch.dot(grad_D_real_x.T, grad_D_real_x)
     grad_norm_s = torch.dot(grad_D_real_s.T, grad_D_real_s)

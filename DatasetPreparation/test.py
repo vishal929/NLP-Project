@@ -1,3 +1,4 @@
+import os
 import pickle
 from collections import OrderedDict
 
@@ -9,6 +10,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy as np
 import Losses.Loss as loss
+import Modules.Generator
+import DatasetPreparation.prepDataset as prepData
 
 ''' below is only for notebook '''
 '''
@@ -203,23 +206,55 @@ if __name__ == '__main__':
         torchvision.transforms.Resize((256, 256)),
         torchvision.transforms.RandomCrop(256),
         torchvision.transforms.RandomHorizontalFlip()])
-
     # grab dataset
+    cubImageDir = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011', 'cub-200-2011-20220408T185459Z-001',
+                               'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'images')
+    '''
     cubImageDir = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/CUB_200_2011/CUB_200_2011/' \
                   'images'
-    cubCaptionDir = '../CUBS Dataset/Cubs-2011/bird_metadata/birds/text/text'
+    '''
+    cubCaptionDir = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011', 'bird_metadata', 'birds', 'text',
+                                 'text')
 
     # place where cub metadata is
+    cubBoundingBoxFile = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+                                      'cub-200-2011-20220408T185459Z-001',
+                                      'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'bounding_boxes.txt')
+    '''
     cubBoundingBoxFile = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                          'CUB_200_2011/CUB_200_2011/bounding_boxes.txt'
+    '''
+    '''
     cubFileMappings = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                       'CUB_200_2011/CUB_200_2011/images.txt'
+    '''
+    cubFileMappings = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+                                   'cub-200-2011-20220408T185459Z-001',
+                                   'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'images.txt')
+    cubClasses = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+                              'cub-200-2011-20220408T185459Z-001',
+                              'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'image_class_labels.txt')
+    '''
     cubClasses = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                  './CUB_200_2011/image_class_labels.txt'
+    '''
+    cubTrainTestSplit = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+                                     'cub-200-2011-20220408T185459Z-001',
+                                     'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'train_test_split.txt')
+    '''
     cubTrainTestSplit = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                         'CUB_200_2011/CUB_200_2011/train_test_split.txt'
+    '''
 
-    cubDataset = prepD.imageCaptionDataset(cubCaptionDir, cubImageDir, 10, transform, 'train', 18)
+    pickleDir = os.path.join(os.getcwd(), 'CUBMetadata')
+
+    # setting up dataset if not setup already (i.e pickles dont exist)
+    #prepData.setupCUB(cubCaptionDir, cubBoundingBoxFile, cubTrainTestSplit, cubFileMappings, cubClasses, pickleDir)
+
+    # grabbing dataset
+    batchSize = 15
+    cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir, 10, transform, 'train', 18)
+
 
     with open('./CUBMetadata/TheirCaptions/captions.pickle', 'rb') as f:
         x = pickle.load(f)
@@ -318,7 +353,7 @@ if __name__ == '__main__':
 
     # loading data
     dataloader = torch.utils.data.DataLoader(
-        cubDataset, batch_size = 5, drop_last = True,
+        cubDataset, batch_size = batchSize, drop_last = True,
         shuffle=True, num_workers = 2
     )
 
@@ -329,6 +364,7 @@ if __name__ == '__main__':
     print(train_images.shape)
     print(train_captions.shape)
     print(captionLengths.shape)
+    print(captionLengths)
     print(classID.shape)
 
     #print(train_captions)
@@ -341,9 +377,10 @@ if __name__ == '__main__':
     train_captions = train_captions.cuda()
     train_images = train_images.cuda()
     captionLengths = captionLengths.cuda()
+    classID = classID.cuda()
 
     # resetting text encoder state
-    newHidden = text_encoder.initHiddenStates(5)
+    newHidden = text_encoder.initHiddenStates(batchSize)
 
     wordEmbeddings, sentenceEmbeddings = text_encoder(train_captions,captionLengths,newHidden)
 
@@ -358,16 +395,16 @@ if __name__ == '__main__':
     print('global image features shape: ' + str(globalImageFeatures.shape))
 
     # authors prepare real labels and fake labels, with size batch_size
-    real_labels = torch.FloatTensor(5).fill_(1).cuda()
-    fake_labels = torch.FloatTensor(5).fill_(0).cuda()
-    match_labels = torch.LongTensor(5).cuda()
+    real_labels = torch.FloatTensor(batchSize).fill_(1).cuda()
+    fake_labels = torch.FloatTensor(batchSize).fill_(0).cuda()
+    match_labels = torch.LongTensor(batchSize).cuda()
 
     # getting value of sentence and word matching losses
     #words_loss(img_features, words_emb, labels,cap_lens, class_ids, batch_size)
-    localHolder = words_loss(localImageFeatures, wordEmbeddings, match_labels,captionLengths, classID, 5)
+    localHolder = words_loss(localImageFeatures, wordEmbeddings, match_labels,captionLengths, classID, batchSize)
 
     #sent_loss(cnn_code, rnn_code, labels, class_ids,batch_size, eps=1e-8)
-    globalHolder = sent_loss(globalImageFeatures,sentenceEmbeddings,match_labels,classID,5)
+    globalHolder = sent_loss(globalImageFeatures,sentenceEmbeddings,match_labels,classID,batchSize)
 
     loss0Local = localHolder[0]
     loss1Local = localHolder[1]
@@ -385,11 +422,14 @@ if __name__ == '__main__':
     print('loss 1 global : ' + str(loss2Global))
 
     # our implementation
-    ourLoss0Local, ourLoss1Local, ourLoss0Global, ourLoss1Global = loss.calculateAttentionMatchingScoreBatchWrapper(sentenceEmbeddings, wordEmbeddings, localImageFeatures, globalImageFeatures,match_labels)
+    ourLoss0Local, ourLoss1Local, ourLoss0Global, ourLoss1Global = loss.calculateAttentionMatchingScoreBatchWrapper(sentenceEmbeddings, wordEmbeddings, localImageFeatures, globalImageFeatures,match_labels,captionLengths)
     print('our l0 local: ' + str(ourLoss0Local))
     print('our l1 local: ' + str(ourLoss1Local))
     print('our l0 global: ' + str(ourLoss0Global))
     print('our l1 global: ' + str(ourLoss1Global))
+
+    # sending embeddings to generator
+    generator = None
 
 
 
