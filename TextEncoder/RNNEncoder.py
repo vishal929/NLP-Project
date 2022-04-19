@@ -47,7 +47,8 @@ class bilstmEncoder(torch.nn.Module):
 
         # packing the caption lengths to use with the lstm
         captionLengthData = captionLengths.data.tolist()
-        packedEmbeddings = torch.nn.utils.rnn.pack_padded_sequence(embedded,captionLengthData, batch_first = True)
+        packedEmbeddings = torch.nn.utils.rnn.pack_padded_sequence(embedded,captionLengthData, batch_first = True,
+                                                                   enforce_sorted=False)
 
         # getting output and final hidden states based on last hidden state
         output, hiddens = self.LSTM(packedEmbeddings,hidden)
