@@ -23,7 +23,7 @@ class Discriminator(torch.nn.Module):
         downblock_scales = [2,4,8, 16, 16, 16, 2, 2]
       
       #Initialize downblocks
-      self.downblocks_l = []
+      self.downblocks_l = torch.nn.ModuleList()
       prev_scale = 1
       for i in range(len(downblock_scales)-2):
         curr_scale = downblock_scales[i]

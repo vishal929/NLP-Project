@@ -1,5 +1,5 @@
 import torch
-import SSACN
+from SSACN import *
 from FCBlock import FCBlock
 
 class Generator(torch.nn.Module):
@@ -13,28 +13,18 @@ class Generator(torch.nn.Module):
     #NOTE: The above dense layer auto-reshapes output into 
     #shape: (batch_size, 8*n_features, 4, 4)
 
-    #TODO: Initialize the mask module to be weakly-learned
-    self.mask = None
-
     #Use default scales for SSACNBlocks if none provided
     if(ssacn_block_scales is None):
       ssacn_block_scales = [(8,8), (8,8), (8,8), (8,8), (8,4), (4,2), (2,1)]
 
-    self.SSACN_blocks = []
+    self.SSACN_blocks = torch.nn.ModuleList()
     for i, (in_scale, out_scale) in enumerate(ssacn_block_scales):
-      predict_mask = True
-      #If it's the last SSACN block, no need to predict another mask
-      if(i == len(ssacn_block_scales)-1):
-        predict_mask = False
-      curr_block = SSACN.SSACNBlock(in_scale*n_features, 
-                                    out_scale*n_features,
-                                    predict_mask=predict_mask)
-    self.SSACN_blocks.append(curr_block)
+      curr_block = SSACNBlock(in_scale*n_features, out_scale*n_features)
+      self.SSACN_blocks.append(curr_block)
 
-    #TODO: Need to replace this batchnorm with the synchronized one they use
     self.BN = torch.nn.BatchNorm2d(n_features)
-    self.leakyR = torch.nn.LeakyReLU(0.2)
-    #Initialize last conv layer to turn generated img into shape: (batch_size, 256, 256, 3)
+    self.leakyR = torch.nn.LeakyReLU(0.2, inplace=True)
+    #Initialize last conv layer to turn generated img into shape: (batch_size, 3, 256, 256)
     self.final_conv = torch.nn.Conv2d(n_features, 3, 3, 1, 1)
     self.tanh = torch.nn.Tanh()
 
@@ -43,14 +33,16 @@ class Generator(torch.nn.Module):
     Forward pass of generator to generate fake images
     Args:
       z (torch.Tensor): Standard gaussian noise of shape: (batch_size, z_shape[1])
-      s (torch.Tensor,requires_grad=T): Text-embeddings used by SSACNBlock 
+      s (torch.Tensor,requires_grad=T): Sentence-embeddings used by SSACNBlock 
     Return:
-      x (torch.Tensor,requires_grad=T): Final generated image of shape: (batch_size, 256,256,3)
+      x (torch.Tensor,requires_grad=T): Final generated image of shape: (batch_size, 3, 256,256)
     """
-    x = self.dense(z)
-    #TODO: masking logic
-    for ssacn_block in self.SSACN_blocks:
-      x = ssacn_block(x)
+    x = self.dense(z) #Shape: (batch_size, 8*n_features, 4, 4)
+    for i, ssacn_block in enumerate(self.SSACN_blocks):
+      scale = 2
+      if(i==0):
+        scale = 1
+      x = ssacn_block(x, s, scale = scale )
     x = self.BN(x)
     x = self.leakyR(x)
     x = self.final_conv(x)
