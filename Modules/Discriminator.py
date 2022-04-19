@@ -56,15 +56,15 @@ class Discriminator(torch.nn.Module):
 
     # image actually (batch_size, 1024,4,4)
     # sentence dimension is (batch_size, 256)
-    print(x.shape)
-    print(s.shape)
+    #print(x.shape)
+    #print(s.shape)
     #Replicate text across channels, maintaining same batch_size
     # unsqueezing sentence to add dimensions after features -> (batchsize,256,1,1)
     s = s.unsqueeze(2)
     s = s.unsqueeze(3)
     # repeating features along 3rd and 4th dimensions to match shape
     s = s.repeat(1,1,4,4)
-    print(s.shape)
+    #print(s.shape)
     #Concatenate along the channels dimension (last 2 dims are h,w so -3 dim is channel)
     x = torch.cat((x, s), dim=-3)
 
