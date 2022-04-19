@@ -72,16 +72,21 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
     #  normalize similarity matrix batch for each matrix in the batch
     # s has shape ( batch, sequenceLength,289)
     # summing along columns
+    s = torch.softmax(s,dim=1)
+    '''
     s = torch.exp(s)
     s = s / torch.sum(s,dim=1,keepdim=True)
+    '''
     #print(s)
+
 
 
     # get region context vectors as a matrix
     # this is the result of an alpha matrix elementwise multiplication with the word vectors
     # then we sum everything together
-
-    alphaMatrix = torch.exp(gammaOne * s)
+    alphaMatrix = gammaOne * s
+    alphaMatrix = torch.softmax(alphaMatrix,dim=2)
+    #alphaMatrix = torch.exp(gammaOne * s)
     # summing over each column
     '''
     print(alphaMatrix.shape)
@@ -90,7 +95,7 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
     print(torch.sum(alphaMatrix, dim=1).shape)
     print(torch.sum(alphaMatrix, dim=1, keepdim=True).shape)
     '''
-    alphaMatrix = alphaMatrix / torch.sum(alphaMatrix,dim = 2,keepdim=True)
+    #alphaMatrix = alphaMatrix / torch.sum(alphaMatrix,dim = 2,keepdim=True)
     #print(alphaMatrix)
 
     # multiplying each a_j with v_j by matrix multiplication to get a sub-region word context matrix by broadcasting
@@ -114,21 +119,25 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
     # element wise division by the norms of each context vector, and for each word vector
     # basically just elementwise square, then sum along column, and then take sqrt
     #print(torch.norm(contextMatrix,dim=2).shape)
-    relevanceVector /= torch.norm(contextMatrix,dim=2)
+    # clamping to avoid divide by 0
+    relevanceVector /= torch.norm(contextMatrix,dim=2).clamp(1e-8)
     #relevanceVector /= torch.sqrt(torch.sum(torch.pow(contextMatrix,2),dim=1,keepdim=True))
     # norming along columns, since columns hold features
     #print(torch.norm(wordMatrixEmbedding,dim=1).shape)
-    relevanceVector /= torch.norm(wordMatrixEmbedding,dim=1)
+    # clamping to avoid divide by 0
+    relevanceVector /= torch.norm(wordMatrixEmbedding,dim=1).clamp(1e-8)
     # need to sum along row here since the i-th feature vector of the i-th word is the i-th column
     #relevanceVector /= torch.sqrt(torch.sum(torch.pow(wordMatrixEmbedding,2),dim=2,keepdim=True))
 
     #print(relevanceVector.shape)
 
     #print(torch.log(torch.sum(torch.exp(5.0*relevanceVector),dim=1)))
-    RQD = torch.log(torch.sum(torch.exp(5.0*relevanceVector),dim=1))
+    RQD = torch.logsumexp(relevanceVector*gammaTwo,dim=1)
+    #RQD = torch.log(torch.sum(torch.exp(5.0*relevanceVector),dim=1))
 
     # getting entire attention driven matching score between
     # entire image (Q) and whole text description (D)
+    #RQD = torch.pow(torch.logsumexp(relevanceVector*gammaTwo,dim=1),1/gammaTwo)
     '''
     RQD = torch.log(
         torch.sum(
@@ -144,8 +153,8 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
     #print(globalImagePerceptronOutput)
     globalAttentionScore = torch.matmul(globalImagePerceptronOutput,sentenceEmbedding.transpose(0,1)).squeeze(dim=0)
     #print(globalAttentionScore)
-    globalAttentionScore /= torch.norm(globalImagePerceptronOutput,dim=1)
-    globalAttentionScore /= torch.norm(sentenceEmbedding,dim=1)
+    globalAttentionScore /= torch.norm(globalImagePerceptronOutput,dim=1).clamp(1e-8)
+    globalAttentionScore /= torch.norm(sentenceEmbedding,dim=1).clamp(1e-8)
     return RQD, globalAttentionScore
 
 # we are given a score matrix where the i,jth element is the attention driven matching score
