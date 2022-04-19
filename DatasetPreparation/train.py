@@ -62,6 +62,8 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
             # generator does not need to update with discriminator (diff objectives)
             x_fake_features = x_fake
             #x_fake_features = x_fake.detach()
+            sentEmbeddings = (sentEmbeddings.data).requires_grad_()
+            trainImages = (trainImages.data).requires_grad_()
 
             # 0 optimizer gradients before computing loss
             optimizerD.zero_grad()
