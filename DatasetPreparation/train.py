@@ -4,27 +4,82 @@ from collections import OrderedDict
 
 import torch
 from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
+import torchvision
 import sys
 import matplotlib
 from matplotlib import pyplot as plt
 import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+
 import DatasetPreparation.prepDataset as prepData
-from Losses.Loss import adv_D, adv_G
+from Losses.Loss import adv_D, adv_G, calculateAttentionMatchingScoreBatchWrapper, totalLoss
 from Modules.Discriminator import Discriminator
 from Modules.Generator import Generator
 from TextEncoder.RNNEncoder import bilstmEncoder
 from ImageEncoder.CNNEncoder import cnnEncoder
 from tqdm import tqdm
 
+# paper functions
+MEAN = [0.5, 0.5, 0.5]
+STD = [0.5, 0.5, 0.5]
+INV_MEAN = [-m for m in MEAN]
+INV_STD = [1.0 / s for s in STD]
+def rescale(x):
+    lo, hi = x.min(), x.max()
+    return x.sub(lo).div(hi - lo)
+def imagenet_deprocess(rescale_image=True):
+    transforms = [
+        torchvision.transforms.Normalize(mean=[0, 0, 0], std=INV_STD),
+        torchvision.transforms.Normalize(mean=INV_MEAN, std=[1.0, 1.0, 1.0]),
+    ]
+    if rescale_image:
+        transforms.append(rescale)
+    return torchvision.transforms.Compose(transforms)
+def imagenet_deprocess_batch(imgs, rescale=True):
+    """
+    Input:
+    - imgs: FloatTensor of shape (N, C, H, W) giving preprocessed images
+    Output:
+    - imgs_de: ByteTensor of shape (N, C, H, W) giving deprocessed images
+      in the range [0, 255]
+    """
+    if isinstance(imgs, torch.autograd.Variable):
+        imgs = imgs.data
+    imgs = imgs.cpu().clone()
+    deprocess_fn = imagenet_deprocess(rescale_image=rescale)
+    imgs_de = []
+    for i in range(imgs.size(0)):
+        img_de = (imgs[i].unsqueeze(0)).add(1.0).mul(127.5)
+        imgs_de.append(img_de)
+    imgs_de = torch.cat(imgs_de, dim=0)
+    return imgs_de
+
+def write_images_losses(writer, imgs, fake_imgs, errD, d_loss, errG, DAMSM, epoch):
+    index = epoch
+    writer.add_scalar('errD/d_loss', errD, index)
+    writer.add_scalar('errD/MAGP', d_loss, index)
+    writer.add_scalar('errG/g_loss', errG, index)
+    writer.add_scalar('errG/DAMSM', DAMSM, index)
+    imgs_print = imagenet_deprocess_batch(imgs)
+    #imgs_64_print = imagenet_deprocess_batch(fake_imgs[0])
+    #imgs_128_print = imagenet_deprocess_batch(fake_imgs[1])
+    imgs_256_print = imagenet_deprocess_batch(fake_imgs)
+    writer.add_image('images/img1_pred', torchvision.utils.make_grid(imgs_256_print, normalize=True, scale_each=True), index)
+    #writer.add_image('images/img2_caption', torchvision.utils.make_grid(cap_imgs, normalize=True, scale_each=True), index)
+    writer.add_image('images/img3_real', torchvision.utils.make_grid(imgs_print, normalize=True, scale_each=True), index)
 
 def train(dataloader, generator, discriminator, textEncoder, imageEncoder, device, optimizerG, optimizerD,
           epochNum, batch_size, discriminatorLoss, generatorLoss, maxEpoch, trainSaveInterval):
 
     # training
+
+    # summary writer for keeping track of training
+    writer = SummaryWriter()
+
     for epoch in tqdm(range(epochNum+1,maxEpoch+1)):
         dataIterator = iter(dataloader)
         for step in tqdm(range(len(dataIterator))):
+            torch.autograd.set_detect_anomaly(True)
             trainImages, trainCaptions, captionLengths, classID  = dataIterator.next()
             trainCaptions = trainCaptions.type(torch.LongTensor)
             captionLengths = captionLengths.type(torch.LongTensor)
@@ -33,9 +88,9 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
             trainCaptions = trainCaptions.squeeze()
 
             # sending data to gpu
-            trainImages = trainImages.cuda()
-            trainCaptions = trainCaptions.cuda()
-            captionLengths = captionLengths.cuda()
+            trainImages = trainImages.to(device)
+            trainCaptions = trainCaptions.to(device)
+            captionLengths = captionLengths.to(device)
 
             # resetting bilstm encoder hidden state
             newHidden = textEncoder.initHiddenStates(batch_size)
@@ -54,33 +109,55 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
             # Make standard gaussian noise
             z_shape = (batch_size, 100)
             #with torch.no_grad():
-            z = torch.normal(0.0, torch.ones(z_shape)).cuda()
+            z = torch.normal(0.0, torch.ones(z_shape)).to(device)
 
             # Forward pass for generator to get generated imgs conditioned on embedded text
             x_fake = generator(z, sentEmbeddings)
 
             # generator does not need to update with discriminator (diff objectives)
-            x_fake_features = x_fake
-            #x_fake_features = x_fake.detach()
+            #x_fake_features = x_fake
+            x_fake_features = x_fake.detach()
             sentEmbeddings = (sentEmbeddings.data).requires_grad_()
             trainImages = (trainImages.data).requires_grad_()
 
             # 0 optimizer gradients before computing loss
             optimizerD.zero_grad()
             # Compute advesarial loss for discriminator
-            L_advD, D_fake = adv_D(D=discriminator,
+            L_advD, _ = adv_D(D=discriminator,
                                    opt=optimizerD,
                                    x=trainImages,
                                    x_hat=x_fake_features,
                                    s=sentEmbeddings,
+                                   device=device,
                                    lambda_MA=2, p=6)
 
+            L_advD.backward(retain_graph=True)
+            optimizerD.step()
 
 
+            # update G
+            D_fake = discriminator(x_fake,sentEmbeddings)
+            genLoss = adv_G(D_fake)
+
+            # get damsm loss
+            match_labels = torch.LongTensor(batchSize).to(device)
+            localImageFeatures,globalImageFeatures = imageEncoder(trainImages)
+            localImageFeatures = localImageFeatures.detach()
+            globalImageFeatures = globalImageFeatures.detach()
+            damsm = calculateAttentionMatchingScoreBatchWrapper(sentEmbeddings,wordEmbeddings,localImageFeatures,
+                                                        globalImageFeatures,match_labels,captionLengths)
+
+            finalLoss = totalLoss(genLoss,damsm)
+            optimizerG.zero_grad()
+            finalLoss.backward()
+            optimizerG.step()
+
+            img = trainImages[0].to(device)
+
+        write_images_losses(writer, img, x_fake, L_advD, L_advD, genLoss, finalLoss, epoch)
 
 
         # saving status when we hit the save interval
-        '''
         if epoch % trainSaveInterval == 0 :
             # saving training status at certain intervals
             torch.save({
@@ -92,15 +169,14 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
                 'gLoss': generatorLoss,
                 'dLoss': discriminatorLoss
             }, 'cubTrainingCheckpoint.pth')
-        '''
     return 0
 
 if __name__ == '__main__':
     # transform for images
-    transform = transforms.Compose([
-            transforms.Resize(int(256 * 76 / 64)),
-            transforms.RandomCrop(256),
-            transforms.RandomHorizontalFlip()])
+    transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(int(256 * 76 / 64)),
+            torchvision.transforms.RandomCrop(256),
+            torchvision.transforms.RandomHorizontalFlip()])
 
     # grab dataset
     cubImageDir = os.path.join(os.getcwd(),'..','CUBS Dataset','Cubs-2011','cub-200-2011-20220408T185459Z-001',
@@ -146,11 +222,12 @@ if __name__ == '__main__':
     prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
 
     # grabbing dataset
-    batchSize = 6
+    batchSize = 4
     cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir,10, transform, 'train', 18)
 
     cubDataLoader = DataLoader(cubDataset,batch_size=batchSize, drop_last=True, shuffle=True, num_workers=2)
 
+    #device = torch.device('cpu')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # initializing modules needed in framework
@@ -185,7 +262,7 @@ if __name__ == '__main__':
     text_encoder.load_state_dict(modifiedState)
 
     # sending text encoder to gpu
-    text_encoder.cuda()
+    text_encoder.to(device)
 
     # setting parameters to be fixed
     for param in text_encoder.parameters():
@@ -241,7 +318,7 @@ if __name__ == '__main__':
 
     image_encoder.load_state_dict(imageModifiedState)
 
-    image_encoder = image_encoder.cuda()
+    image_encoder = image_encoder.to(device)
 
     for param in image_encoder.parameters():
         param.requires_grad = False
@@ -255,24 +332,25 @@ if __name__ == '__main__':
     optimizerD = torch.optim.Adam(discriminator.parameters(),lr=0.0004, betas=(0.0, 0.9))
 
     # loading training status for cub
-    '''
-    checkpoint = torch.load('cubTrainingCheckpoint.pth')
+    trainFile = 'cubTrainingCheckpoint.pth'
+    if (os.path.isfile(trainFile)):
+        checkpoint = torch.load('cubTrainingCheckpoint.pth')
 
-    generator.load_state_dict(checkpoint['generator_state_dict'])
-    discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
-    optimizerG.load_state_dict(checkpoint['optimizer_generator_state_dict'])
-    optimizerD.load_state_dict(checkpoint['optimizer_discriminator_state_dict'])
-    generatorLoss = checkpoint['gLoss']
-    discriminatorLoss = checkpoint['dLoss']
-    numEpoch = checkpoint['epoch']
-    '''
+        generator.load_state_dict(checkpoint['generator_state_dict'])
+        discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+        optimizerG.load_state_dict(checkpoint['optimizer_generator_state_dict'])
+        optimizerD.load_state_dict(checkpoint['optimizer_discriminator_state_dict'])
+        generatorLoss = checkpoint['gLoss']
+        discriminatorLoss = checkpoint['dLoss']
+        numEpoch = checkpoint['epoch']
+
     discriminatorLoss = None
     generatorLoss = None
 
     # training loop
     # saving state every 10 epochs
     train(cubDataLoader, generator, discriminator,text_encoder, image_encoder, device, optimizerG, optimizerD,
-          numEpoch, batchSize, discriminatorLoss, generatorLoss,300, 10)
+          numEpoch, batchSize, discriminatorLoss, generatorLoss,300, 5)
 
 
 

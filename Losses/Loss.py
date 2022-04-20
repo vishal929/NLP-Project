@@ -186,32 +186,32 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
 def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenScoreMatrix, match_labels
                        , gammaThree=10):
     # calculating P(D_i|Q_i) matrix -> matching description to image
-    powered = gammaThree * localAttentionDrivenScoreMatrix
+    powered = torch.exp(gammaThree * localAttentionDrivenScoreMatrix)
+    #powered = gammaThree * localAttentionDrivenScoreMatrix
     # just doing softmax with identity matrix as labels
-    localLossOne = torch.nn.CrossEntropyLoss()(powered,match_labels)
+    #localLossOne = torch.nn.CrossEntropyLoss()(powered,match_labels)
     powered1 = powered.transpose(0,1)
-    localLossTwo = torch.nn.CrossEntropyLoss()(powered.transpose(0,1),match_labels)
-    '''
+    #localLossTwo = torch.nn.CrossEntropyLoss()(powered.transpose(0,1),match_labels)
     # need to sum along each column and scale the row by the entire row sum
-    print(powered)
+    #print(powered)
     #print(torch.sum(powered,dim=1,keepdim=True))
     pDQ =  powered / torch.sum(powered,dim=1,keepdim=True)
-    print(pDQ)
+    #print(pDQ)
 
     # calculating P(Q_i | D_i) matrix -> matching image to description
     # need to sum along rows here, and scale the column by the entire column sum
     #print(torch.sum(powered,dim=0,keepdim=True))
     pQD = powered/ torch.sum(powered,dim=0,keepdim=True)
-    print(pQD)
+    #print(pQD)
 
     # losses for local parts
     # just a negative log probability of an image being matched with its description
     localLossOne =  - torch.trace(torch.log(pDQ))
     # vice versa log of a description being matched with an image
     localLossTwo = -torch.trace(torch.log(pQD))
-    '''
 
     # doing the same as above, but for the global components
+    '''
     globalAttentionDrivenScoreMatrix = gammaThree * globalAttentionDrivenScoreMatrix
     globalLossOne = torch.nn.CrossEntropyLoss()(globalAttentionDrivenScoreMatrix,match_labels)
     globalLossTwo = torch.nn.CrossEntropyLoss()(globalAttentionDrivenScoreMatrix.transpose(0,1),match_labels)
@@ -226,13 +226,12 @@ def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenSco
     # same as above basically
     globalLossOne = -torch.trace(torch.log(globalPDQ))
     globalLossTwo = -torch.trace(torch.log(globalPQD))
-    '''
 
     # returning losses
     return localLossOne , localLossTwo , globalLossOne ,globalLossTwo
 
 
-def adv_D(D, opt, x, x_hat, s, lambda_MA, p):
+def adv_D(D, opt, x, x_hat, s, lambda_MA, p, device):
     """
     Computes the advesarial loss for the Discriminator
     Args:
@@ -252,29 +251,29 @@ def adv_D(D, opt, x, x_hat, s, lambda_MA, p):
     D_fake = D(x_hat, s)
 
     # Expected loss for failing to recognize real images (real loss)
-    E_real = torch.maximum(torch.zeros(D_real.shape).cuda(), 1.0 - D_real).mean()
+    E_real = torch.maximum(torch.zeros(D_real.shape).to(device), 1.0 - D_real).mean()
     # Expected loss for getting fooled by generator
-    E_fool = torch.maximum(torch.zeros(D_fake.shape).cuda(), 1.0 + D_fake).mean()
+    E_fool = torch.maximum(torch.zeros(D_fake.shape).to(device), 1.0 + D_fake).mean()
     # Expected loss for getting wrong text pairing
     # Mismatched text
     s_hat = s[:(s.size(0) - 1)]
     x_mismatch = x[1:]
     mismatchedErrors = D(x_mismatch,s_hat)
-    E_mismatch = torch.maximum(torch.zeros(mismatchedErrors.shape).cuda(), 1.0 + mismatchedErrors).mean()
+    E_mismatch = torch.maximum(torch.zeros(mismatchedErrors.shape).to(device), 1.0 + mismatchedErrors).mean()
 
     # Calculate gradients of decision w.r.t. both x and s
-    D_real.backward(torch.ones_like(D_real))
+    D_real.backward(torch.ones_like(D_real).to(device),retain_graph=True)
     #print(D_real.grad)
     #testGrad = [torch.autograd.grad(outputs=out,inputs=x[0],retain_graph=True)[0][i] for i,out in enumerate(D_real[0])]
     #print(testGrad)
     # Obtain calculated gradients and use them to get Eucl norms
-    grad_D_real_x = x.grad
+    grad_D_real_x = x.grad.flatten(start_dim=1)
     grad_D_real_s = s.grad
     #print(grad_D_real_s.shape)
     #print(grad_D_real_x.shape)
     opt.zero_grad()
-    grad_norm_x = torch.dot(grad_D_real_x.T, grad_D_real_x)
-    grad_norm_s = torch.dot(grad_D_real_s.T, grad_D_real_s)
+    grad_norm_x = torch.norm(grad_D_real_x)
+    grad_norm_s = torch.norm(grad_D_real_s)
     # Expected MA-GP loss
     E_MA = torch.pow(grad_norm_x + grad_norm_s, p).mean()
 
@@ -333,5 +332,7 @@ def adv_G(D_fake):
     return -1.0*(D_fake).mean()
 
 # total loss for the generator consists of an adversarial loss + a weighted damsm loss
-def totalLoss(damsmWeight, adversarialLoss, damsmLoss):
-    return adversarialLoss + (damsmWeight * damsmLoss)
+def totalLoss( generatorLoss, damsmLoss, damsmWeight = 0.05):
+    #print(generatorLoss.shape)
+    #print(damsmLoss.shape)
+    return generatorLoss + (damsmWeight * (damsmLoss[0]+damsmLoss[1]+damsmLoss[2]+damsmLoss[3]))
