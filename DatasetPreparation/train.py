@@ -74,8 +74,7 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
     # training
 
     # summary writer for keeping track of training
-    writer = SummaryWriter()
-
+    writer = SummaryWriter('writerStuff')
     for epoch in tqdm(range(epochNum+1,maxEpoch+1)):
         dataIterator = iter(dataloader)
         for step in tqdm(range(len(dataIterator))):
@@ -161,7 +160,7 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
         if epoch % trainSaveInterval == 0 :
             # saving training status at certain intervals
             torch.save({
-                'epoch': epochNum,
+                'epoch': epoch,
                 'generator_state_dict': generator.state_dict(),
                 'optimizer_generator_state_dict': optimizerG.state_dict(),
                 'discriminator_state_dict': discriminator.state_dict(),
@@ -333,7 +332,8 @@ if __name__ == '__main__':
 
     # loading training status for cub
     trainFile = 'cubTrainingCheckpoint.pth'
-    if (os.path.isfile(trainFile)):
+    if (os.path.isfile(os.path.join(os.getcwd(),trainFile))):
+        print('loaded state!')
         checkpoint = torch.load('cubTrainingCheckpoint.pth')
 
         generator.load_state_dict(checkpoint['generator_state_dict'])
