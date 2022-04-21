@@ -78,7 +78,7 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
     for epoch in tqdm(range(epochNum+1,maxEpoch+1)):
         dataIterator = iter(dataloader)
         for step in tqdm(range(len(dataIterator))):
-            torch.autograd.set_detect_anomaly(True)
+            #torch.autograd.set_detect_anomaly(True)
             trainImages, trainCaptions, captionLengths, classID  = dataIterator.next()
             trainCaptions = trainCaptions.type(torch.LongTensor)
             captionLengths = captionLengths.type(torch.LongTensor)
@@ -98,12 +98,12 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
             sentEmbeddings=None
 
             # getting embeddings
-           # with torch.no_grad():
-            wordEmbeddings, sentEmbeddings = textEncoder(trainCaptions,captionLengths,newHidden)
+            with torch.no_grad():
+                wordEmbeddings, sentEmbeddings = textEncoder(trainCaptions,captionLengths,newHidden)
 
             # detaching so gradient doesnt flow back to textEncoder
-            wordEmbeddings = wordEmbeddings.detach()
-            sentEmbeddings = sentEmbeddings.detach()
+            #wordEmbeddings = wordEmbeddings.detach()
+            #sentEmbeddings = sentEmbeddings.detach()
 
             # Make standard gaussian noise
             z_shape = (batch_size, 100)
@@ -140,9 +140,12 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
 
             # get damsm loss
             match_labels = torch.LongTensor(batchSize).to(device)
-            localImageFeatures,globalImageFeatures = imageEncoder(trainImages)
-            localImageFeatures = localImageFeatures.detach()
-            globalImageFeatures = globalImageFeatures.detach()
+            localImageFeatures = None
+            globalImageFeatures = None
+            with torch.no_grad():
+                localImageFeatures,globalImageFeatures = imageEncoder(trainImages)
+            #localImageFeatures = localImageFeatures.detach()
+            #globalImageFeatures = globalImageFeatures.detach()
             damsm = calculateAttentionMatchingScoreBatchWrapper(sentEmbeddings,wordEmbeddings,localImageFeatures,
                                                         globalImageFeatures,match_labels,captionLengths)
 
@@ -350,7 +353,7 @@ if __name__ == '__main__':
     # training loop
     # saving state every 10 epochs
     train(cubDataLoader, generator, discriminator,text_encoder, image_encoder, device, optimizerG, optimizerD,
-          numEpoch, batchSize, discriminatorLoss, generatorLoss,300, 5)
+          numEpoch, batchSize, discriminatorLoss, generatorLoss,600, 5)
 
 
 
