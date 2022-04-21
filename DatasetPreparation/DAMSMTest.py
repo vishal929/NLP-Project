@@ -89,7 +89,7 @@ def sent_loss(cnn_code, rnn_code, labels, class_ids,batch_size, eps=1e-8):
     masks = []
     if class_ids is not None:
         for i in range(batch_size):
-            mask = class_ids == class_ids[i]
+            mask = (class_ids == class_ids[i])
             mask[i] = 0
             masks.append(mask.view(1, -1))
         # masks: batch_size x batch_size
