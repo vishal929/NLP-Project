@@ -2,6 +2,7 @@
 import os
 from collections import OrderedDict
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import torchvision
@@ -18,6 +19,7 @@ import nltk.tokenize.regexp as RegexTokenizer
 
 # transforms user input into a valid padded caption for feeding into the text encoder
 def transformUserInput(userInput, wordToIndexVocab):
+    padded = np.zeros(18)
     newText = []
     numWords = 0
     # paper uses a regexp tokenizer for pattern r'\w+'
@@ -33,8 +35,19 @@ def transformUserInput(userInput, wordToIndexVocab):
 
     if numWords>18:
         # problem here, we need to randomly pick some words, but preserve word order
+        indices = np.arange(newText)
+        # shuffling indices
+        np.random.shuffle(indices)
+        indices = indices[:18]
+        # preserving word order
+        indices = np.sort(indices)
+        for i in indices:
+            padded[i] = newText[i]
         # capping numWords at 18
         numWords = 18
+    else:
+        # no problem, we can fit all the words in the caption
+        padded[:numWords,1] = newText
     return newText, numWords
 
 def evaluate(generator,textEncoder, device, wordToIndexVocab):
