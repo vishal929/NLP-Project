@@ -20,7 +20,7 @@ class Discriminator(torch.nn.Module):
 
       #If the amount to scale the outgoing number of features is not provided, use default
       if(downblock_scales is None):
-        downblock_scales = [1,2,4,8, 16, 16, 16,2,2]
+        downblock_scales = [1,2,4,8, 16, 16, 16,2,1]
       
       #Initialize downblocks
       self.downblocks_l = torch.nn.ModuleList()
@@ -35,8 +35,8 @@ class Discriminator(torch.nn.Module):
       n_rep1 = downblock_scales[-2]
       n_rep2 = downblock_scales[-1]
       self.conv_rep1 = torch.nn.Conv2d(n_c*prev_scale + (text_shape[-1]), n_c*n_rep1, 3, 1,1, bias=False)
-      self.conv_rep2 = torch.nn.Conv2d(n_c*n_rep1, n_c*n_rep2, 4, 1, bias=False)
-      self.leakyR = torch.nn.LeakyReLU(0.2)
+      self.leakyR = torch.nn.LeakyReLU(0.2, inplace=True)
+      self.conv_rep2 = torch.nn.Conv2d(n_c*n_rep1, n_rep2, 4, 1, 0, bias=False)
 
   def forward(self, x, s):
     """
@@ -49,7 +49,7 @@ class Discriminator(torch.nn.Module):
       x (torch.Tensor): Output decision or logits
     """
     x = self.conv1(x)
-    for downblock_layer in self.downblocks_l:
+    for i,downblock_layer in enumerate(self.downblocks_l):
       x = downblock_layer(x)
 
     #Process text input and concatenate to image features along height
@@ -60,17 +60,17 @@ class Discriminator(torch.nn.Module):
     #print(s.shape)
     #Replicate text across channels, maintaining same batch_size
     # unsqueezing sentence to add dimensions after features -> (batchsize,256,1,1)
-    s = s.unsqueeze(2)
-    s = s.unsqueeze(3)
-    # repeating features along 3rd and 4th dimensions to match shape
-    s = s.repeat(1,1,4,4)
+    s = s.unsqueeze(2).unsqueeze(3).repeat(1,1,4,4)
     #print(s.shape)
     #Concatenate along the channels dimension (last 2 dims are h,w so -3 dim is channel)
     x = torch.cat((x, s), dim=-3)
+    #print("Concat Ours: ", x[0,:,0,:])
 
     #Run rest of conv layers on concatenated output
     x = self.conv_rep1(x)
     x = self.leakyR(x)
     x = self.conv_rep2(x)
+    #print("Our shape: ", x.shape)
+    #print("Joint conv Ours: ", x[0,:,0,:])
 
     return x
