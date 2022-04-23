@@ -24,24 +24,41 @@ class AttentionalBlock(torch.nn.Module):
         # self attention layer will send 16x16 patches to a new representation
         # resulting embed_dim=256 is split across 4 heads and then concatenated to send each patch to a vector
         # # of size 256
-        self.selfAttentionLayer = torch.nn.MultiheadAttention(embed_dim=256,num_heads=4)
+        self.selfAttentionLayer = torch.nn.MultiheadAttention(embed_dim=256,num_heads=4,batch_first=True)
 
 
-        self.crossAttentionLayer = torch.nn.MultiheadAttention()
+        self.crossAttentionLayer = torch.nn.MultiheadAttention(embed_dim=256,num_heads=4,batch_first=True)
 
 
     # x is the image channel data
-    # y is the word embeddings
+    # y are the word embeddings
     def forward(self,x,y):
         # grabbing 16x16 patches from input x
         size = 16
         stride =16
-        patches = x.unfold(1,size,stride).unfold(2,size,stride).unfold(3,size,stride)
+        patches = x.unfold(2,size,stride).unfold(3,size,stride)
+
+        #(batchSize,3*numPatches)
 
         # flattening 16x16 patches
+        patches = patches.flatten(start_dim=-2,end_dim=-1)
+        # flattening middle representations to get just a sequence of raw patches
+        patches = patches.flatten(start_dim=1,end_dim=-2)
 
 
         # self attention between patches of image to determine "which need to still be filled out"
-        patchRepresentations = self.selfAttentionLayer(patches,patches,patches)
+        patches = self.selfAttentionLayer(patches,patches,patches)
 
-        pass
+        # now we have representations of patches based on self attention
+        # lets " fill" these patches using cross attention with word embeddings
+        # keep in mind words embeddings have dim 256, and our patches have dim 256, so we can do cross attention here
+
+        # cross attention between our patches and word embeddings
+        patches = self.crossAttentionLayer(patches,y,y)
+
+        # reshaping patches back to (batch,3,256,256)
+        patches = patches.reshape(x.shape)
+
+        # send along output to the next block for further "selective" filling
+        return patches
+
