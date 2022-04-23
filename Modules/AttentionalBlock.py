@@ -38,12 +38,19 @@ class AttentionalBlock(torch.nn.Module):
         stride =16
         patches = x.unfold(2,size,stride).unfold(3,size,stride)
 
+        # do we need positional embeddings? some sources say not required, since order is kind of deterministic
+        # # when flattening
+
         #(batchSize,3*numPatches)
 
         # flattening 16x16 patches
         patches = patches.flatten(start_dim=-2,end_dim=-1)
         # flattening middle representations to get just a sequence of raw patches
         patches = patches.flatten(start_dim=1,end_dim=-2)
+
+        # patches shape should now be (batchSize,numPatches,256)
+
+        # may need to send these patches to a smaller representation if size is too big !
 
 
         # self attention between patches of image to determine "which need to still be filled out"
