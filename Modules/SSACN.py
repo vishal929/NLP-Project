@@ -20,26 +20,41 @@ class SSACNBlock(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.mask_predictor = MaskPredictor(self.out_channels)
-        self.sscbn = SSCBN(self.out_channels, self.learnable_sc)
+        #self.sscbn = SSCBN(self.out_channels, self.learnable_sc)
+        self.firstSSCBN = SSCBN(self.in_channels, self.learnable_sc)
+        self.secondSSCBN = SSCBN(self.out_channels, self.learnable_sc)
+        self.relu = torch.nn.ReLU()
+        self.firstConvolution = torch.nn.Conv2d(in_channels, out_channels, 3, 1, 1)
+        self.secondConvolution = torch.nn.Conv2d(out_channels, out_channels, 3, 1, 1)
+        # gamma weighting parameter to determine how much we should weight text features in final step of forward
+        self.gamma = torch.nn.Parameter(torch.zeros(1))
         self.diffChannels = in_channels != out_channels
         if self.diffChannels:
             self.channelScaler = nn.Conv2d(in_channels, out_channels, 1, stride=1, padding=0)
 
 # check scale_factor
     def forward(self, image_features, text_features, mask=None, scale = 2):
-        if self.diffChannels:
-            image_features = self.channelScaler(image_features)
+
         (b_s, c, h, w) = image_features.shape
         if scale != 1:
           upscaled_image_features = f.interpolate(image_features, mode='bilinear',
                                     size=(scale*h, scale*w),align_corners=True)
         else:
           upscaled_image_features = image_features
+        residualVal = upscaled_image_features
+        if self.diffChannels:
+            residualVal = self.channelScaler(upscaled_image_features)
         #print(upscaled_image_features.shape)
-        mask = self.mask_predictor(upscaled_image_features)
-        output_image_features = self.sscbn(upscaled_image_features, text_features, mask)
+        mask = self.mask_predictor(residualVal)
+        output_image_features = self.firstSSCBN(upscaled_image_features, text_features, mask)
+        output_image_features = self.relu(output_image_features)
+        output_image_features = self.firstConvolution(output_image_features)
 
-        return output_image_features
+        output_image_features = self.secondSSCBN(output_image_features,text_features,mask)
+        output_image_features = self.relu(output_image_features)
+        output_image_features = self.secondConvolution(output_image_features)
+
+        return residualVal + self.gamma * output_image_features
 
 # Mask predictor used in SSACN
 class MaskPredictor(nn.Module):
