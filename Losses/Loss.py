@@ -149,7 +149,6 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
     # need to sum along row here since the i-th feature vector of the i-th word is the i-th column
     #relevanceVector /= torch.sqrt(torch.sum(torch.pow(wordMatrixEmbedding,2),dim=2,keepdim=True))
 
-    #print(relevanceVector.shape)
 
     #print(torch.log(torch.sum(torch.exp(5.0*relevanceVector),dim=1)))
     RQD = torch.logsumexp(relevanceVector*gammaTwo,dim=1)
@@ -186,12 +185,11 @@ def calculateAttentionMatchingScore(sentenceEmbedding, wordMatrixEmbedding, loca
 def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenScoreMatrix, match_labels
                        , gammaThree=10):
     # calculating P(D_i|Q_i) matrix -> matching description to image
+    '''
     powered = torch.exp(gammaThree * localAttentionDrivenScoreMatrix)
     #powered = gammaThree * localAttentionDrivenScoreMatrix
     # just doing softmax with identity matrix as labels
-    #localLossOne = torch.nn.CrossEntropyLoss()(powered,match_labels)
-    powered1 = powered.transpose(0,1)
-    #localLossTwo = torch.nn.CrossEntropyLoss()(powered.transpose(0,1),match_labels)
+
     # need to sum along each column and scale the row by the entire row sum
     #print(powered)
     #print(torch.sum(powered,dim=1,keepdim=True))
@@ -209,12 +207,18 @@ def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenSco
     localLossOne =  - torch.trace(torch.log(pDQ))
     # vice versa log of a description being matched with an image
     localLossTwo = -torch.trace(torch.log(pQD))
+    '''
+    localAttentionDrivenScoreMatrix = gammaThree * localAttentionDrivenScoreMatrix
+    localLossOne = -torch.trace(torch.log(torch.softmax(localAttentionDrivenScoreMatrix,dim=0)))
+    localLossTwo = -torch.trace(torch.log(torch.softmax(localAttentionDrivenScoreMatrix,dim=1)))
+    #localLossOne = torch.nn.CrossEntropyLoss()(localAttentionDrivenScoreMatrix,match_labels)
+    #localLossTwo = torch.nn.CrossEntropyLoss()(localAttentionDrivenScoreMatrix.transpose(0,1),match_labels)
 
     # doing the same as above, but for the global components
     '''
     globalAttentionDrivenScoreMatrix = gammaThree * globalAttentionDrivenScoreMatrix
-    globalLossOne = torch.nn.CrossEntropyLoss()(globalAttentionDrivenScoreMatrix,match_labels)
-    globalLossTwo = torch.nn.CrossEntropyLoss()(globalAttentionDrivenScoreMatrix.transpose(0,1),match_labels)
+    
+    '''
     '''
     globalPowered = torch.exp(gammaThree * globalAttentionDrivenScoreMatrix)
     globalPDQ = globalPowered / torch.sum(globalPowered,dim=1)
@@ -226,6 +230,12 @@ def calculateDAMSMLoss(localAttentionDrivenScoreMatrix, globalAttentionDrivenSco
     # same as above basically
     globalLossOne = -torch.trace(torch.log(globalPDQ))
     globalLossTwo = -torch.trace(torch.log(globalPQD))
+    '''
+    globalAttentionDrivenScoreMatrix = gammaThree * globalAttentionDrivenScoreMatrix
+    globalLossOne = -torch.trace(torch.log(torch.softmax(globalAttentionDrivenScoreMatrix,dim=0)))
+    globalLossTwo = -torch.trace(torch.log(torch.softmax(globalAttentionDrivenScoreMatrix,dim=1)))
+    #globalLossOne = torch.nn.CrossEntropyLoss()(globalAttentionDrivenScoreMatrix, match_labels)
+    #globalLossTwo = torch.nn.CrossEntropyLoss()(globalAttentionDrivenScoreMatrix.transpose(0, 1), match_labels)
 
     # returning losses
     return localLossOne , localLossTwo , globalLossOne ,globalLossTwo
@@ -256,26 +266,24 @@ def adv_D(D, opt, x, x_hat, s, lambda_MA, p, device):
     E_fool = torch.maximum(torch.zeros(D_fake.shape).to(device), 1.0 + D_fake).mean()
     # Expected loss for getting wrong text pairing
     # Mismatched text
-    s_hat = s[:(s.size(0) - 1)]
-    x_mismatch = x[1:]
+    b_s = s.shape[0]
+    s_hat = s[1:b_s]
+    x_mismatch = x[:(b_s - 1)]
     mismatchedErrors = D(x_mismatch,s_hat)
     E_mismatch = torch.maximum(torch.zeros(mismatchedErrors.shape).to(device), 1.0 + mismatchedErrors).mean()
 
     # Calculate gradients of decision w.r.t. both x and s
     D_real.backward(torch.ones_like(D_real).to(device),retain_graph=True)
     #print(D_real.grad)
-    #testGrad = [torch.autograd.grad(outputs=out,inputs=x[0],retain_graph=True)[0][i] for i,out in enumerate(D_real[0])]
-    #print(testGrad)
     # Obtain calculated gradients and use them to get Eucl norms
     grad_D_real_x = x.grad.flatten(start_dim=1)
     grad_D_real_s = s.grad
     #print(grad_D_real_s.shape)
     #print(grad_D_real_x.shape)
     opt.zero_grad()
-    grad_norm_x = torch.norm(grad_D_real_x)
-    grad_norm_s = torch.norm(grad_D_real_s)
+    norm_grad = torch.cat((grad_D_real_x ** 2, grad_D_real_s ** 2), dim=1).sum(dim=1).sqrt()
     # Expected MA-GP loss
-    E_MA = torch.pow(grad_norm_x + grad_norm_s, p).mean()
+    E_MA = torch.pow(norm_grad, p).mean()
 
     # Final weighted adv loss for discriminator
     Loss_adv_D = E_real + ((E_fool + E_mismatch) / 2.0) + lambda_MA * (E_MA)
