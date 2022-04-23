@@ -24,6 +24,7 @@ def test(dataloader, generator, textEncoder, device, batch_size):
     writer = SummaryWriter('testStuff')
     dataIterator = iter(dataloader)
     for step in tqdm(range(len(dataIterator))):
+        # dont need gradients for testing
         with torch.no_grad():
             testImages, testCaptions, captionLengths, classID  = dataIterator.next()
             testCaptions = testCaptions.type(torch.LongTensor)
@@ -58,7 +59,8 @@ def test(dataloader, generator, textEncoder, device, batch_size):
             # Forward pass for generator to get generated imgs conditioned on embedded text
             x_fake = generator(z, sentEmbeddings)
 
-            # saving generatedImage, realImage, and associated caption
+            # we need to save the real image associated with the generated image for FID score
+            # saving generatedImage, realImage, and associated captions
 
             #img = trainImages[0].to(device)
 
@@ -110,6 +112,7 @@ if __name__ == '__main__':
 
     # grabbing dataset
     batchSize = 4
+    # setting none for image transforms, since we do not want to apply normalization techniques at test time
     cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir,10, None, 'test', 18)
 
     cubDataLoader = DataLoader(cubDataset,batch_size=batchSize, drop_last=True, shuffle=True, num_workers=3)
