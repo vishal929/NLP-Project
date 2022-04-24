@@ -8,8 +8,9 @@ import scipy.linalg.sqrtm as sqrtm
 
 
 def getInceptionV3():
+    # we will let inception transform our images before evaluation
     inceptionPoolModel = torch.nn.Sequential(*list(
-        torchvision.models.inception_v3(pretrained=True, transform_input=False)
+        torchvision.models.inception_v3(pretrained=True)
             .children()
     )[:-1])
 
@@ -45,7 +46,6 @@ def getActivations(realImages, generatedImages, inceptionPoolModel):
     # sending both real images and generated images through inception to get pool representations
     # may need to interpolate to 299x299 before sending images through inception
 
-    realImages = torch.nn.functional.interpolate(realImages, size=(299, 299), mode='bilinear', align_corners=False)
     realActivations = inceptionPoolModel(realImages)
     fakeActivations = inceptionPoolModel(generatedImages)
 
