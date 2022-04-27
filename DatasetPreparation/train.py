@@ -140,10 +140,8 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
 
             # get damsm loss
             match_labels = torch.LongTensor(batchSize).to(device)
-            localImageFeatures = None
-            globalImageFeatures = None
-            with torch.no_grad():
-                localImageFeatures,globalImageFeatures = imageEncoder(trainImages)
+
+            localImageFeatures,globalImageFeatures = imageEncoder(x_fake)
             #localImageFeatures = localImageFeatures.detach()
             #globalImageFeatures = globalImageFeatures.detach()
             damsm = calculateAttentionMatchingScoreBatchWrapper(sentEmbeddings,wordEmbeddings,localImageFeatures,
@@ -224,7 +222,7 @@ if __name__ == '__main__':
     prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
 
     # grabbing dataset
-    batchSize = 4
+    batchSize = 3
     cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir,10, transform, 'train', 18)
 
     cubDataLoader = DataLoader(cubDataset,batch_size=batchSize, drop_last=True, shuffle=True, num_workers=2)
