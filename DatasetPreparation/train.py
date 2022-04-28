@@ -74,7 +74,7 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
     # training
 
     # summary writer for keeping track of training
-    writer = SummaryWriter('writerStuff')
+    writer = SummaryWriter('DAMSMWriterStuff')
     for epoch in tqdm(range(epochNum+1,maxEpoch+1)):
         dataIterator = iter(dataloader)
         for step in tqdm(range(len(dataIterator))):
@@ -139,7 +139,7 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
             genLoss = adv_G(D_fake)
 
             # get damsm loss
-            match_labels = torch.LongTensor(batchSize).to(device)
+            match_labels = None
 
             localImageFeatures,globalImageFeatures = imageEncoder(x_fake)
             #localImageFeatures = localImageFeatures.detach()
@@ -344,6 +344,8 @@ if __name__ == '__main__':
         generatorLoss = checkpoint['gLoss']
         discriminatorLoss = checkpoint['dLoss']
         numEpoch = checkpoint['epoch']
+
+        del checkpoint
 
     discriminatorLoss = None
     generatorLoss = None
