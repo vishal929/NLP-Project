@@ -3,69 +3,64 @@ import torch
 
 
 # pytorch module for our class
-
-# will this work?
-# we start with noise of shape (3,255,255)
-# then we split each channel into 16x16 chunks and put them together into one tensor
-# perform self attention between the chunks in each channel to get some representation for each chunk
-# # (ideally, this provides a representation of patches that still "need to be filled out")
-# perform cross attention between chunks of all channels and 18 word embeddings
-# # (this would provide the "stuffing" for patches that still "need to be filled out")
+# attentional module expecting patch representations as input
 class AttentionalBlock(torch.nn.Module):
 
     # # attentional block
-    def __init__(self):
+    # patchSizeLength **2 needs to be divisible by numHeads
+    def __init__(self, numHeads = 8, embedDim=256, linearScaling = 4, isSelfAttention=True ,dropout=0.1):
         super.__init__()
         '''
         torch.nn.MultiheadAttention(embed_dim, num_heads, dropout=0.0, bias=True, add_bias_kv=False,
                                     add_zero_attn=False, kdim=None, vdim=None, batch_first=False, device=None,
                                     dtype=None)
         '''
+        # embedding dim for the attention layer
+        self.embedDim = embedDim
+        self.numHeads = numHeads
+        self.isSelfAttention = isSelfAttention
+        self.dropout = dropout
+        # intermediate scaling for mlp part of self attention
+        self.linearScaling = linearScaling
         # self attention layer will send 16x16 patches to a new representation
         # resulting embed_dim=256 is split across 4 heads and then concatenated to send each patch to a vector
         # # of size 256
-        self.selfAttentionLayer = torch.nn.MultiheadAttention(embed_dim=256,num_heads=4,batch_first=True)
 
+        # define an attention layer
+        self.attention = torch.nn.MultiheadAttention(embed_dim=self.embedDim, num_heads=self.numHeads, batch_first=True, dropout=self.dropout)
+        # feedforward part after attention
+        self.feedforward = torch.nn.Sequential(torch.nn.Linear(self.embedDim,self.linearScaling*self.embedDim),
+                                               torch.nn.GELU(),
+                                               torch.nn.Dropout(p=self.dropout),
+                                               torch.nn.Linear(self.linearScaling*self.embedDim,self.embedDim))
+        # need 2 layernorms
+        self.norm1 = torch.nn.LayerNorm(self.embedDim)
+        self.norm2 = torch.nn.LayerNorm(self.embedDim)
 
-        self.crossAttentionLayer = torch.nn.MultiheadAttention(embed_dim=256,num_heads=4,batch_first=True)
+    # x are the patch embeddings
+    # y are word features for cross attention
+    # may need a mask if there are padding tokens
+    def forward(self,x,y=None, mask=None):
+        # keep a shortcut
+        shortcut = x
+        if self.isSelfAttention:
+            # we just do self attention operations
+            # run through multi headed attention layer
+            x = self.attention(x,x,x)
 
+        else:
+            # doing cross attention operations
+            # masking padding words beyond sequence length
+            x = self.attention(x,y,y, key_padding_mask = mask)
 
-    # x is the image channel data
-    # y are the word embeddings
-    def forward(self,x,y):
-        # grabbing 16x16 patches from input x
-        size = 16
-        stride =16
-        patches = x.unfold(2,size,stride).unfold(3,size,stride)
+        # add shortcut and layernorm
+        x = self.norm1(shortcut + x)
+        # keep a shortcut
+        shortcut = x
+        # feedforward
+        x = self.feedForward(x)
+        # add shortcut and layernorm
+        x = self.norm2(shortcut + x)
 
-        # do we need positional embeddings? some sources say not required, since order is kind of deterministic
-        # # when flattening
-
-        #(batchSize,3*numPatches)
-
-        # flattening 16x16 patches
-        patches = patches.flatten(start_dim=-2,end_dim=-1)
-        # flattening middle representations to get just a sequence of raw patches
-        patches = patches.flatten(start_dim=1,end_dim=-2)
-
-        # patches shape should now be (batchSize,numPatches,256)
-
-        # may need to send these patches to a smaller representation if size is too big !
-
-
-        # self attention between patches of image to determine "which need to still be filled out"
-        patches = self.selfAttentionLayer(patches,patches,patches)
-
-        # now we have representations of patches based on self attention
-        # lets " fill" these patches using cross attention with word embeddings
-        # keep in mind words embeddings have dim 256, and our patches have dim 256, so we can do cross attention here
-
-        # cross attention between our patches and word embeddings
-        patches = self.crossAttentionLayer(patches,y,y)
-
-        # reshaping patches back to (batch,3,256,256)
-        patches = patches.reshape(x.shape)
-
-        # send along output to the next block for further "selective" filling
-        return patches
-
+        # just return the new representations for the patches -> we can reshape in the generator to the output
+        return x
