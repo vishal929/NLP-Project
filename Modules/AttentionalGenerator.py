@@ -32,17 +32,20 @@ class AttentionalGenerator(torch.nn.Module):
     # then sending each (32x32x3) patch to some embedding through a linear layer
 
     patchDim = patchLength*patchLength*3
+    numPatches = (255 // patchLength) * (255 // patchLength)
+
     self.transformPatches = torch.nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patchLength, p2 = patchLength),
             torch.nn.Linear(patchDim, attentionFeatures)
     )
 
+
     # need positional embedding for patches
-    self.imagePositions = torch.nn.Parameter()
+    self.imagePositions = torch.nn.Parameter(torch.randn(1,numPatches,attentionFeatures))
 
     # need positional embedding for words
-    self.wordPositions = torch.nn.Parameter()
-
+    # there is max sequence length of 18 and word embeddings have dim 256
+    self.wordPositions = torch.nn.Parameter(torch.randn(18,256))
     # 3 self attention layers
     self.selfAttentionLayers = torch.nn.Sequential(
             AttentionalBlock(embedDim=attentionFeatures,isSelfAttention=True),
