@@ -8,7 +8,7 @@ class AttentionalBlock(torch.nn.Module):
 
     # # attentional block
     # patchSizeLength **2 needs to be divisible by numHeads
-    def __init__(self, numHeads = 8, embedDim=256, linearScaling = 4, isSelfAttention=True ,dropout=0.1):
+    def __init__(self, numHeads = 8, embedDim=256, textDim=256, linearScaling = 4, isSelfAttention=True ,dropout=0.1):
         super.__init__()
         '''
         torch.nn.MultiheadAttention(embed_dim, num_heads, dropout=0.0, bias=True, add_bias_kv=False,
@@ -27,7 +27,12 @@ class AttentionalBlock(torch.nn.Module):
         # # of size 256
 
         # define an attention layer
-        self.attention = torch.nn.MultiheadAttention(embed_dim=self.embedDim, num_heads=self.numHeads, batch_first=True, dropout=self.dropout)
+        if isSelfAttention:
+            self.attention = torch.nn.MultiheadAttention(embed_dim=self.embedDim, num_heads=self.numHeads, batch_first=True, dropout=self.dropout)
+        else:
+            # key and value will be of a different dimension possibly (256 for word embeddings)
+            self.attention = torch.nn.MultiheadAttention(embed_dim=self.embedDim, num_heads=self.numHeads, batch_first=True, dropout=self.dropout, kdim=textDim,vdim=textDim)
+
         # feedforward part after attention
         self.feedforward = torch.nn.Sequential(torch.nn.Linear(self.embedDim,self.linearScaling*self.embedDim),
                                                torch.nn.GELU(),
