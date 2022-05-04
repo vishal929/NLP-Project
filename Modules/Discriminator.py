@@ -1,5 +1,5 @@
 import torch
-from DownBlock import DownBlock
+from Modules.DownBlock import DownBlock
 
 class Discriminator(torch.nn.Module):
   """
@@ -48,9 +48,17 @@ class Discriminator(torch.nn.Module):
     Return:
       x (torch.Tensor): Output decision or logits
     """
+    # x has shape (batch,3,256,256)
     x = self.conv1(x)
+    # now x has shape (batch,3,64,256,256)
     for i,downblock_layer in enumerate(self.downblocks_l):
       x = downblock_layer(x)
+      # downblock 0: (batch,128,128,128)
+      # downblock 1: (batch,256,64,64)
+      # downblock 2: (batch,512,32,32)
+      # downblock 3: (batch,1024,16,16)
+      # downblock 4: (batch,1024,8,8)
+      # downblock 5: (batch,1024,4,4)
 
     #Process text input and concatenate to image features along height
 
@@ -64,12 +72,19 @@ class Discriminator(torch.nn.Module):
     #print(s.shape)
     #Concatenate along the channels dimension (last 2 dims are h,w so -3 dim is channel)
     x = torch.cat((x, s), dim=-3)
+    # x shape is now (batch,1280,4,4)
+
     #print("Concat Ours: ", x[0,:,0,:])
 
     #Run rest of conv layers on concatenated output
+
     x = self.conv_rep1(x)
+    # x shape is now (batch,128,4,4)
+
     x = self.leakyR(x)
     x = self.conv_rep2(x)
+    # x shape is now (batch,1,1,1)
+
     #print("Our shape: ", x.shape)
     #print("Joint conv Ours: ", x[0,:,0,:])
 

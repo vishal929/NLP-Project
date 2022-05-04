@@ -1,6 +1,6 @@
 import torch
-from SSACN import *
-from FCBlock import FCBlock
+from Modules.SSACN import *
+from Modules.FCBlock import FCBlock
 
 class Generator(torch.nn.Module):
   """
@@ -38,13 +38,22 @@ class Generator(torch.nn.Module):
       x (torch.Tensor,requires_grad=T): Final generated image of shape: (batch_size, 3, 256,256)
     """
     x = self.dense(z) #Shape: (batch_size, 8*n_features, 4, 4)
+    # shape after dense: (batch , 512,4,4)
     for i, ssacn_block in enumerate(self.SSACN_blocks):
       scale = 2
       if(i==0):
         scale = 1
       x = ssacn_block(x, s, scale = scale )
+      # shape after block 0: (batch,512,4,4)
+      # shape after block 1: (batch,512,8,8)
+      # shape after block 2: (batch,512,16,16)
+      # shape after block 3: (batch,512,32,32)
+      # shape after block 4: (batch,256,64,64)
+      # shape after block 5: (batch,128,128,128)
+      # shape after block 6: (batch,64,256,256)
     x = self.BN(x)
     x = self.leakyR(x)
+    # shape at this point is (batchSize, 64,256,256)
     x = self.final_conv(x)
     x = self.tanh(x)
     return x
