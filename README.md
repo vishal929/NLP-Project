@@ -49,3 +49,7 @@ Our checkpoints turned out to be not so great compared to the original author's 
 we provide both the DAMSM and non-DAMSM checkpoints below to download: 
 * DAMSM:
 * non-DAMSM: 
+
+## Modification to Original Architecture:
+
+We tried experimenting with additional attentional modifications to the original architecture, which you can view at trainAttentional.py and trainAttentionalModel.py. None of those worked well for us, and every train run ended up in mode collapse. If you are able to fit a higher batch size or find some great hyperparameters, maybe these will work well for you. 
