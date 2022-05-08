@@ -1,0 +1,1 @@
+place the DAMSM text encoder and image encoder pth state files given by the authors here
