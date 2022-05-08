@@ -19,22 +19,8 @@ from TextEncoder.RNNEncoder import bilstmEncoder
 from ImageEncoder.CNNEncoder import cnnEncoder
 from tqdm import tqdm
 
-# paper functions
-MEAN = [0.5, 0.5, 0.5]
-STD = [0.5, 0.5, 0.5]
-INV_MEAN = [-m for m in MEAN]
-INV_STD = [1.0 / s for s in STD]
-def rescale(x):
-    lo, hi = x.min(), x.max()
-    return x.sub(lo).div(hi - lo)
-def imagenet_deprocess(rescale_image=True):
-    transforms = [
-        torchvision.transforms.Normalize(mean=[0, 0, 0], std=INV_STD),
-        torchvision.transforms.Normalize(mean=INV_MEAN, std=[1.0, 1.0, 1.0]),
-    ]
-    if rescale_image:
-        transforms.append(rescale)
-    return torchvision.transforms.Compose(transforms)
+
+# imagenet_deprocess_batch and write_images_losses are provided by the authors of the original implementation in order to monitor training with tensorboard
 def imagenet_deprocess_batch(imgs, rescale=True):
     """
     Input:
@@ -46,7 +32,6 @@ def imagenet_deprocess_batch(imgs, rescale=True):
     if isinstance(imgs, torch.autograd.Variable):
         imgs = imgs.data
     imgs = imgs.cpu().clone()
-    deprocess_fn = imagenet_deprocess(rescale_image=rescale)
     imgs_de = []
     for i in range(imgs.size(0)):
         img_de = (imgs[i].unsqueeze(0)).add(1.0).mul(127.5)
@@ -133,7 +118,6 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
             L_advD.backward(retain_graph=True)
             optimizerD.step()
 
-
             # update G
             D_fake = discriminator(x_fake,sentEmbeddings)
             genLoss = adv_G(D_fake)
@@ -154,6 +138,7 @@ def train(dataloader, generator, discriminator, textEncoder, imageEncoder, devic
 
             img = trainImages[0].to(device)
 
+        # monitoring training
         write_images_losses(writer, img, x_fake, L_advD, L_advD, genLoss, finalLoss, epoch)
 
 
@@ -179,16 +164,16 @@ if __name__ == '__main__':
             torchvision.transforms.RandomHorizontalFlip()])
 
     # grab dataset
-    cubImageDir = os.path.join(os.getcwd(),'..','CUBS Dataset','Cubs-2011','cub-200-2011-20220408T185459Z-001',
+    cubImageDir = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011', 'cub-200-2011-20220408T185459Z-001',
                                'cub-200-2011','CUB_200_2011','CUB_200_2011','images')
     '''
     cubImageDir = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/CUB_200_2011/CUB_200_2011/' \
                   'images'
     '''
-    cubCaptionDir = os.path.join(os.getcwd(),'..','CUBS Dataset','Cubs-2011','bird_metadata','birds','text','text')
+    cubCaptionDir = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011', 'bird_metadata', 'birds', 'text', 'text')
 
     # place where cub metadata is
-    cubBoundingBoxFile = os.path.join(os.getcwd(),'..','CUBS Dataset','Cubs-2011','cub-200-2011-20220408T185459Z-001',
+    cubBoundingBoxFile = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011', 'cub-200-2011-20220408T185459Z-001',
                                'cub-200-2011','CUB_200_2011','CUB_200_2011','bounding_boxes.txt')
     '''
     cubBoundingBoxFile = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
@@ -198,17 +183,17 @@ if __name__ == '__main__':
     cubFileMappings = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                       'CUB_200_2011/CUB_200_2011/images.txt'
     '''
-    cubFileMappings = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+    cubFileMappings = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011',
                                       'cub-200-2011-20220408T185459Z-001',
                                       'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'images.txt')
-    cubClasses = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+    cubClasses = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011',
                                    'cub-200-2011-20220408T185459Z-001',
                                    'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'image_class_labels.txt')
     '''
     cubClasses = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                  './CUB_200_2011/image_class_labels.txt'
     '''
-    cubTrainTestSplit = os.path.join(os.getcwd(), '..', 'CUBS Dataset', 'Cubs-2011',
+    cubTrainTestSplit = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011',
                               'cub-200-2011-20220408T185459Z-001',
                               'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'train_test_split.txt')
     '''
@@ -216,10 +201,10 @@ if __name__ == '__main__':
                         'CUB_200_2011/CUB_200_2011/train_test_split.txt'
     '''
 
-    pickleDir = os.path.join(os.getcwd(),'CUBMetadata')
+    pickleDir = os.path.join(os.getcwd(), 'DatasetPreparation','CUBMetadata')
 
     # setting up dataset if not setup already (i.e pickles dont exist)
-    prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
+    #prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
 
     # grabbing dataset
     batchSize = 3
@@ -246,7 +231,8 @@ if __name__ == '__main__':
     text_encoder = bilstmEncoder(len(cubDataset.indexToWord), 300, 0.5, 256, 18)
 
     # loading pre trained parameters of the text_encoder for cub
-    cubTextEncoderPath = "../CubDamsm/text_encoder200.pth"
+    cubTextEncoderPath = os.path.join(os.getcwd(),'CubDamsm','text_encoder200.pth')
+    #cubTextEncoderPath = "../CubDamsm/text_encoder200.pth"
     textEncoderState = torch.load(cubTextEncoderPath, map_location=lambda storage, loc: storage)
     modifiedState = OrderedDict()
     for key, values in textEncoderState.items():
@@ -261,6 +247,10 @@ if __name__ == '__main__':
     # loading saved model params to the text encoder
     text_encoder.load_state_dict(modifiedState)
 
+    # dictionary location may be on gpu
+    del textEncoderState
+    del modifiedState
+
     # sending text encoder to gpu
     text_encoder.to(device)
 
@@ -274,7 +264,8 @@ if __name__ == '__main__':
     image_encoder = cnnEncoder()
 
     # loading pre trained weights to the image encoder
-    cubImageEncoderPath = "../CubDamsm/image_encoder200.pth"
+    cubImageEncoderPath = os.path.join(os.getcwd(),'CubDamsm','image_encoder200.pth')
+    #cubImageEncoderPath = "../CubDamsm/image_encoder200.pth"
     imageEncoderState = torch.load(cubImageEncoderPath, map_location=lambda storage, loc: storage)
     imageModifiedState = OrderedDict()
     for key, values in imageEncoderState.items():
@@ -318,6 +309,10 @@ if __name__ == '__main__':
 
     image_encoder.load_state_dict(imageModifiedState)
 
+    # dictionary location may be on gpu
+    del imageEncoderState
+    del imageModifiedState
+
     image_encoder = image_encoder.to(device)
 
     for param in image_encoder.parameters():
@@ -332,10 +327,11 @@ if __name__ == '__main__':
     optimizerD = torch.optim.Adam(discriminator.parameters(),lr=0.0004, betas=(0.0, 0.9))
 
     # loading training status for cub
-    trainFile = 'cubTrainingCheckpoint.pth'
-    if (os.path.isfile(os.path.join(os.getcwd(),trainFile))):
+    trainFile = os.path.join(os.getcwd(),'cubTrainingCheckpoint.pth')
+    #trainFile = 'cubTrainingCheckpoint.pth'
+    if os.path.isfile(trainFile):
         print('loaded state!')
-        checkpoint = torch.load('cubTrainingCheckpoint.pth')
+        checkpoint = torch.load(trainFile)
 
         generator.load_state_dict(checkpoint['generator_state_dict'])
         discriminator.load_state_dict(checkpoint['discriminator_state_dict'])

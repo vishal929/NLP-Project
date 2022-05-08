@@ -1,14 +1,9 @@
 # implementation of SSACN block module in pytorch
 
 import torch
-from torch._C import UnionType
 import torch.nn as nn
-import numpy as np
 import torch.nn.functional as f
 
-# TODO: Correct Input / output channels
-# TODO: learnable shortcut if the input and output channels don't match
-# TODO: look at learnable_sc
 # Block that takes text feature vector and image feature maps from last SSACN block as input
 # Outputs new image feature maps
 # Each SSACN has an upsample block, a mask predictor, a SSCBN and a residual block

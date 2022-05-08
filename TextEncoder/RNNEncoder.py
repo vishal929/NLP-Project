@@ -53,8 +53,8 @@ class bilstmEncoder(torch.nn.Module):
         # getting output and final hidden states based on last hidden state
         output, hiddens = self.LSTM(packedEmbeddings,hidden)
 
-        # output is returned as a packed sequence, so we need to unpack it
-        output, lengths = torch.nn.utils.rnn.pad_packed_sequence(output,batch_first=True)
+        # output is returned as a packed sequence, so we need to unpack it -> give padding to 18 elements
+        output, lengths = torch.nn.utils.rnn.pad_packed_sequence(output,batch_first=True,total_length=18)
 
         # sentence encoding will be the final hidden states of directions of the lstm
         # we transpose to change element orientation from (2,batchSize,hiddenDimension) to (batchsize,2,hiddenDimension)

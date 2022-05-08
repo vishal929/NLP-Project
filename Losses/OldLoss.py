@@ -1,12 +1,10 @@
 import torch
 import sys
-sys.path.append('../Modules')
 import Modules.Discriminator as Discriminator
 
 
 #from Discriminator import Discriminator
 # we have normalized adversarial loss and weighted damsm loss components
-# LOOK OVER SCALING HERE , NOT SURE ABOUT THAT
 
 def calculateAttentionMatchingScoreBatchWrapper(sentenceBatch, wordMatrixBatch, localImageBatch, globalImageBatch,
                                                 match_labels, sequenceLengths,
@@ -280,6 +278,57 @@ def adv_D(D, opt, x, x_hat, s, lambda_MA, p, device):
     grad_D_real_s = s.grad
     #print(grad_D_real_s.shape)
     #print(grad_D_real_x.shape)
+    opt.zero_grad()
+    norm_grad = torch.cat((grad_D_real_x ** 2, grad_D_real_s ** 2), dim=1).sum(dim=1).sqrt()
+    # Expected MA-GP loss
+    E_MA = torch.pow(norm_grad, p).mean()
+
+    # Final weighted adv loss for discriminator
+    Loss_adv_D = E_real + ((E_fool + E_mismatch) / 2.0) + lambda_MA * (E_MA)
+    return Loss_adv_D, D_fake
+
+def attentional_adv_D(D, opt, x, x_hat, s, lambda_MA, p, w, padMask, device,scalar):
+    """
+        Computes the advesarial loss for the Discriminator
+        Args:
+          D (Discriminator object): Discriminator
+          opt (Discriminator Optimizer): Optimizer
+          x (torch.Tensor, requires_grad=T): True image with shape (batch_size, channels,  height, width)
+          x_hat (torch.Tensor): Fake generated image with same shape as x
+          s (torch.Tensor, requires_grad=T): True text embedding with shape (batch_size, T_s)
+          lambda_MA (float) : Weight of MA-GP loss
+          p (float) : p hyperparameter
+          w : word embeddings of shape (batch_size,18,T_s)
+          padMask: padding mask of padding indices in the word embeddings tensor
+          scalar: pytorch scalar for half precision training
+        Return:
+          Loss_adv_D (float / torch.Tensor): Computed adversarial loss for Discriminator
+          D_fake (torch.Tensor, requires_grad=T): Discriminator decisions for fake generated images with shape (batch_size, UNKNOWN_YET)
+        """
+    # print(x.shape)
+    D_real = D(x, s, w, padMask)
+    D_fake = D(x_hat, s, w, padMask)
+
+    # Expected loss for failing to recognize real images (real loss)
+    E_real = torch.maximum(torch.zeros(D_real.shape).to(device), 1.0 - D_real).mean()
+    # Expected loss for getting fooled by generator
+    E_fool = torch.maximum(torch.zeros(D_fake.shape).to(device), 1.0 + D_fake).mean()
+    # Expected loss for getting wrong text pairing
+    # Mismatched text
+    b_s = s.shape[0]
+    s_hat = s[1:b_s]
+    x_mismatch = x[:(b_s - 1)]
+    mismatchedErrors = D(x_mismatch, s_hat, w , padMask)
+    E_mismatch = torch.maximum(torch.zeros(mismatchedErrors.shape).to(device), 1.0 + mismatchedErrors).mean()
+
+    # Calculate gradients of decision w.r.t. both x and s
+    D_real.backward(torch.ones_like(D_real).to(device), retain_graph=True)
+    # print(D_real.grad)
+    # Obtain calculated gradients and use them to get Eucl norms
+    grad_D_real_x = x.grad.flatten(start_dim=1)
+    grad_D_real_s = s.grad
+    # print(grad_D_real_s.shape)
+    # print(grad_D_real_x.shape)
     opt.zero_grad()
     norm_grad = torch.cat((grad_D_real_x ** 2, grad_D_real_s ** 2), dim=1).sum(dim=1).sqrt()
     # Expected MA-GP loss

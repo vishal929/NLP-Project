@@ -8,8 +8,8 @@ class AttentionalBlock(torch.nn.Module):
 
     # # attentional block
     # patchSizeLength **2 needs to be divisible by numHeads
-    def __init__(self, numHeads = 8, embedDim=256, textDim=256, linearScaling = 4, isSelfAttention=True ,dropout=0.1):
-        super.__init__()
+    def __init__(self, numHeads = 8, numPatches=1, embedDim=256, textDim=256, linearScaling = 4, isSelfAttention=True ,dropout=0.1):
+        super().__init__()
         '''
         torch.nn.MultiheadAttention(embed_dim, num_heads, dropout=0.0, bias=True, add_bias_kv=False,
                                     add_zero_attn=False, kdim=None, vdim=None, batch_first=False, device=None,
@@ -39,8 +39,8 @@ class AttentionalBlock(torch.nn.Module):
                                                torch.nn.Dropout(p=self.dropout),
                                                torch.nn.Linear(self.linearScaling*self.embedDim,self.embedDim))
         # need 2 layernorms
-        self.norm1 = torch.nn.LayerNorm(self.embedDim)
-        self.norm2 = torch.nn.LayerNorm(self.embedDim)
+        self.norm1 = torch.nn.LayerNorm((numPatches,self.embedDim))
+        self.norm2 = torch.nn.LayerNorm((numPatches,self.embedDim))
 
     # x are the patch embeddings
     # y are word features for cross attention
@@ -51,19 +51,19 @@ class AttentionalBlock(torch.nn.Module):
         if self.isSelfAttention:
             # we just do self attention operations
             # run through multi headed attention layer
-            x = self.attention(x,x,x)
+            x, weights = self.attention(x,x,x)
 
         else:
             # doing cross attention operations
             # masking padding words beyond sequence length
-            x = self.attention(x,y,y, key_padding_mask = mask)
+            x, weights = self.attention(x,y,y, key_padding_mask = mask)
 
         # add shortcut and layernorm
         x = self.norm1(shortcut + x)
         # keep a shortcut
         shortcut = x
         # feedforward
-        x = self.feedForward(x)
+        x = self.feedforward(x)
         # add shortcut and layernorm
         x = self.norm2(shortcut + x)
 

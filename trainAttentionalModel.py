@@ -1,62 +1,81 @@
-# file for testing the generator on the cub dataset
-import torch
+# file for training the attentional model instead of the original one
+
+# simply file for local training
 import os
 from collections import OrderedDict
 
-from PIL import Image
+import torch
 from torch.utils.data import DataLoader
 import torchvision
+import sys
+import matplotlib
+from matplotlib import pyplot as plt
+import numpy as np
+from torch.utils.tensorboard import SummaryWriter
 
 import DatasetPreparation.prepDataset as prepData
+from Losses.Loss import adv_D, adv_G, calculateAttentionMatchingScoreBatchWrapper, totalLoss
+from Modules.Discriminator import Discriminator
 from Modules.Generator import Generator
 from TextEncoder.RNNEncoder import bilstmEncoder
+from ImageEncoder.CNNEncoder import cnnEncoder
 from tqdm import tqdm
-import random
-import numpy as np
 
-def textFromIndices(indexCaption, captionLength, indexToWord):
-    indexCaption = indexCaption[:captionLength]
-    textCaption = ""
-    for index in indexCaption:
-        textCaption += " " + indexToWord[index.item()]
-    return textCaption
+# paper functions
 
-# dont need discriminator or image encoder for testing, we are just saving generated images basically
-# need the indexToWord dictionary to build word from caption
-def test(dataloader, indexToWord, generator, textEncoder, device, batch_size):
+def imagenet_deprocess_batch(imgs, rescale=True):
+    """
+    Input:
+    - imgs: FloatTensor of shape (N, C, H, W) giving preprocessed images
+    Output:
+    - imgs_de: ByteTensor of shape (N, C, H, W) giving deprocessed images
+      in the range [0, 255]
+    """
+    if isinstance(imgs, torch.autograd.Variable):
+        imgs = imgs.data
+    imgs = imgs.cpu().clone()
+    imgs_de = []
+    for i in range(imgs.size(0)):
+        img_de = (imgs[i].unsqueeze(0)).add(1.0).mul(127.5)
+        imgs_de.append(img_de)
+    imgs_de = torch.cat(imgs_de, dim=0)
+    return imgs_de
 
-    fakeDir = os.path.join(os.getcwd(),'test_fake')
-    captionDir = os.path.join(os.getcwd(),'test_captions')
+def write_images_losses(writer, imgs, fake_imgs, errD, d_loss, errG, DAMSM, epoch):
+    index = epoch
+    writer.add_scalar('errD/d_loss', errD, index)
+    writer.add_scalar('errD/MAGP', d_loss, index)
+    writer.add_scalar('errG/g_loss', errG, index)
+    writer.add_scalar('errG/DAMSM', DAMSM, index)
+    imgs_print = imagenet_deprocess_batch(imgs)
+    #imgs_64_print = imagenet_deprocess_batch(fake_imgs[0])
+    #imgs_128_print = imagenet_deprocess_batch(fake_imgs[1])
+    imgs_256_print = imagenet_deprocess_batch(fake_imgs)
+    writer.add_image('images/img1_pred', torchvision.utils.make_grid(imgs_256_print, normalize=True, scale_each=True), index)
+    #writer.add_image('images/img2_caption', torchvision.utils.make_grid(cap_imgs, normalize=True, scale_each=True), index)
+    writer.add_image('images/img3_real', torchvision.utils.make_grid(imgs_print, normalize=True, scale_each=True), index)
 
-    realDir = os.path.join(os.getcwd(),'test_real')
+def train(dataloader, generator, discriminator, textEncoder, imageEncoder, device, optimizerG, optimizerD,
+          epochNum, batch_size, discriminatorLoss, generatorLoss, maxEpoch, trainSaveInterval):
 
-    if not os.path.isdir(realDir):
-        os.mkdir(realDir)
+    # training
 
-    if not os.path.isdir(fakeDir):
-        os.mkdir(fakeDir)
-
-    if not os.path.isdir(captionDir):
-        os.mkdir(captionDir)
-
-    # testing, or "saving" generated images
-    # then, we will evaluate FID and IS scores on the saved images
-    # we need 1000 batches to get 30,000 images with a batch_size of 30
-    # randomly sampling from the test set, as described in the paper
-    for numBatchesProcessed in tqdm(range(1000)):
+    # summary writer for keeping track of training
+    writer = SummaryWriter('writerStuff')
+    for epoch in tqdm(range(epochNum+1,maxEpoch+1)):
         dataIterator = iter(dataloader)
-        # dont need gradients for testing
-        with torch.no_grad():
-            testImages, testCaptions, captionLengths, classID  = dataIterator.next()
-            testCaptions = testCaptions.type(torch.LongTensor)
+        for step in tqdm(range(len(dataIterator))):
+            #torch.autograd.set_detect_anomaly(True)
+            trainImages, trainCaptions, captionLengths, classID  = dataIterator.next()
+            trainCaptions = trainCaptions.type(torch.LongTensor)
             captionLengths = captionLengths.type(torch.LongTensor)
 
             # squeezing labels so they are (batchSize, 18) instead of (batchsize,18,1)
-            testCaptions = testCaptions.squeeze()
+            trainCaptions = trainCaptions.squeeze()
 
             # sending data to gpu
-            #trainImages = trainImages.to(device)
-            testCaptions = testCaptions.to(device)
+            trainImages = trainImages.to(device)
+            trainCaptions = trainCaptions.to(device)
             captionLengths = captionLengths.to(device)
 
             # resetting bilstm encoder hidden state
@@ -66,7 +85,8 @@ def test(dataloader, indexToWord, generator, textEncoder, device, batch_size):
             sentEmbeddings=None
 
             # getting embeddings
-            wordEmbeddings, sentEmbeddings = textEncoder(testCaptions,captionLengths,newHidden)
+            with torch.no_grad():
+                wordEmbeddings, sentEmbeddings = textEncoder(trainCaptions,captionLengths,newHidden)
 
             # detaching so gradient doesnt flow back to textEncoder
             #wordEmbeddings = wordEmbeddings.detach()
@@ -80,74 +100,83 @@ def test(dataloader, indexToWord, generator, textEncoder, device, batch_size):
             # Forward pass for generator to get generated imgs conditioned on embedded text
             x_fake = generator(z, sentEmbeddings)
 
-            # we need to save the real image associated with the generated image for FID score
-            # saving generatedImage, realImage, and associated captions as the following name space:
-            # realImage: "test_real/INDEX.jpeg"
-            # generatedImage: "test_fake/INDEX.jpeg"
-            # associated caption: "test_caption/INDEX.txt"
+            # generator does not need to update with discriminator (diff objectives)
+            #x_fake_features = x_fake
+            x_fake_features = x_fake.detach()
+            sentEmbeddings = (sentEmbeddings.data).requires_grad_()
+            trainImages = (trainImages.data).requires_grad_()
 
-            # index for saving goes from 1 to 30000
-            # adding one to start from 1 instead of 0
-            globalIndex = (numBatchesProcessed*batch_size)+1
+            # 0 optimizer gradients before computing loss
+            optimizerD.zero_grad()
+            # Compute advesarial loss for discriminator
+            L_advD, _ = adv_D(D=discriminator,
+                                   opt=optimizerD,
+                                   x=trainImages,
+                                   x_hat=x_fake_features,
+                                   s=sentEmbeddings,
+                                   device=device,
+                                   lambda_MA=2, p=6)
 
-            # transform after tanh for every pixel value for every image in the batch
-            x_fake = (x_fake + 1.0) * 127.5
-            for index, img in enumerate(x_fake):
-                img = img.cpu().numpy()
-                img = img.astype(np.uint8)
-                img = np.transpose(img,(1,2,0))
-                img = Image.fromarray(img)
-                saveName = str(globalIndex+ index) + '.png'
-                img.save(os.path.join(fakeDir,saveName))
-
-            testImages = (testImages + 1.0) * 127.5
-            for index, img in enumerate(testImages):
-                img = img.cpu().numpy()
-                img = img.astype(np.uint8)
-                img = np.transpose(img, (1, 2, 0))
-                img = Image.fromarray(img)
-                saveName = str(globalIndex + index) + '.png'
-                img.save(os.path.join(realDir, saveName))
+            L_advD.backward(retain_graph=True)
+            optimizerD.step()
 
 
-            # saving the captions
-            testCaptions = testCaptions.cpu()
-            captionLengths = captionLengths.cpu()
-            for index, caption in enumerate(testCaptions):
-                captionLength = captionLengths[index]
-                caption = textFromIndices(caption,captionLength, indexToWord)
-                saveName = str(globalIndex+ index) + '.txt'
-                with open(os.path.join(captionDir,saveName),'w') as f:
-                    f.write(caption)
+            # update G
+            D_fake = discriminator(x_fake,sentEmbeddings)
+            genLoss = adv_G(D_fake)
+
+            # get damsm loss
+            match_labels = torch.LongTensor(batchSize).to(device)
+            localImageFeatures = None
+            globalImageFeatures = None
+            localImageFeatures,globalImageFeatures = imageEncoder(trainImages)
+            #localImageFeatures = localImageFeatures.detach()
+            #globalImageFeatures = globalImageFeatures.detach()
+            damsm = calculateAttentionMatchingScoreBatchWrapper(sentEmbeddings,wordEmbeddings,localImageFeatures,
+                                                        globalImageFeatures,match_labels,captionLengths)
+
+            finalLoss = totalLoss(genLoss,damsm)
+            optimizerG.zero_grad()
+            finalLoss.backward()
+            optimizerG.step()
+
+            img = trainImages[0].to(device)
+
+        write_images_losses(writer, img, x_fake, L_advD, L_advD, genLoss, finalLoss, epoch)
 
 
-
+        # saving status when we hit the save interval
+        if epoch % trainSaveInterval == 0 :
+            # saving training status at certain intervals
+            torch.save({
+                'epoch': epoch,
+                'generator_state_dict': generator.state_dict(),
+                'optimizer_generator_state_dict': optimizerG.state_dict(),
+                'discriminator_state_dict': discriminator.state_dict(),
+                'optimizer_discriminator_state_dict': optimizerD.state_dict(),
+                'gLoss': generatorLoss,
+                'dLoss': discriminatorLoss
+            }, 'cubTrainingCheckpoint.pth')
+    return 0
 
 if __name__ == '__main__':
     # transform for images
-    '''
-    transform=None
-    '''
     transform = torchvision.transforms.Compose([
-        torchvision.transforms.Resize(int(256 * 76 / 64)),
-        torchvision.transforms.RandomCrop(256),
-        torchvision.transforms.RandomHorizontalFlip()])
+            torchvision.transforms.Resize(int(256 * 76 / 64)),
+            torchvision.transforms.RandomCrop(256),
+            torchvision.transforms.RandomHorizontalFlip()])
 
-    # setting seed since we are evaluating
-    random.seed(100)
-    np.random.seed(100)
-    torch.manual_seed(100)
     # grab dataset
-    cubImageDir = os.path.join(os.getcwd(),'CUBS Dataset','Cubs-2011','cub-200-2011-20220408T185459Z-001',
+    cubImageDir = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011', 'cub-200-2011-20220408T185459Z-001',
                                'cub-200-2011','CUB_200_2011','CUB_200_2011','images')
     '''
     cubImageDir = '../CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/CUB_200_2011/CUB_200_2011/' \
                   'images'
     '''
-    cubCaptionDir = os.path.join(os.getcwd(),'CUBS Dataset','Cubs-2011','bird_metadata','birds','text','text')
+    cubCaptionDir = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011', 'bird_metadata', 'birds', 'text', 'text')
 
     # place where cub metadata is
-    cubBoundingBoxFile = os.path.join(os.getcwd(),'CUBS Dataset','Cubs-2011','cub-200-2011-20220408T185459Z-001',
+    cubBoundingBoxFile = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011', 'cub-200-2011-20220408T185459Z-001',
                                'cub-200-2011','CUB_200_2011','CUB_200_2011','bounding_boxes.txt')
     '''
     cubBoundingBoxFile = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
@@ -157,17 +186,17 @@ if __name__ == '__main__':
     cubFileMappings = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                       'CUB_200_2011/CUB_200_2011/images.txt'
     '''
-    cubFileMappings = os.path.join(os.getcwd(), 'CUBS Dataset', 'Cubs-2011',
+    cubFileMappings = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011',
                                       'cub-200-2011-20220408T185459Z-001',
                                       'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'images.txt')
-    cubClasses = os.path.join(os.getcwd(), 'CUBS Dataset', 'Cubs-2011',
+    cubClasses = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011',
                                    'cub-200-2011-20220408T185459Z-001',
                                    'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'image_class_labels.txt')
     '''
     cubClasses = './CUBS Dataset/Cubs-2011/cub-200-2011-20220408T185459Z-001/cub-200-2011/' \
                  './CUB_200_2011/image_class_labels.txt'
     '''
-    cubTrainTestSplit = os.path.join(os.getcwd(), 'CUBS Dataset', 'Cubs-2011',
+    cubTrainTestSplit = os.path.join(os.getcwd(), '', 'CUBS Dataset', 'Cubs-2011',
                               'cub-200-2011-20220408T185459Z-001',
                               'cub-200-2011', 'CUB_200_2011', 'CUB_200_2011', 'train_test_split.txt')
     '''
@@ -175,23 +204,18 @@ if __name__ == '__main__':
                         'CUB_200_2011/CUB_200_2011/train_test_split.txt'
     '''
 
-    pickleDir = os.path.join(os.getcwd(),'DatasetPreparation','CUBMetadata')
+    pickleDir = os.path.join(os.getcwd(), 'DatasetPreparation','CUBMetadata')
 
     # setting up dataset if not setup already (i.e pickles dont exist)
-    #prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
+    prepData.setupCUB(cubCaptionDir,cubBoundingBoxFile,cubTrainTestSplit,cubFileMappings,cubClasses,pickleDir)
 
     # grabbing dataset
-    # using a higher batch size for saving generated images, since we are not training and we dont need
-    # an image encoder for this -> saving vram
-    # the original paper generates 30000 images sampled from the test dataset
-    # so , we will specify batch size 30 and then go over 1000 batches
-    batchSize = 30
-
-    # pytorch dataset object
-    cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir,10, transform, 'test', 18)
+    batchSize = 3
+    cubDataset = prepData.imageCaptionDataset(cubCaptionDir, cubImageDir, pickleDir,10, transform, 'train', 18)
 
     cubDataLoader = DataLoader(cubDataset,batch_size=batchSize, drop_last=True, shuffle=True, num_workers=2)
 
+    #device = torch.device('cpu')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # initializing modules needed in framework
@@ -199,8 +223,7 @@ if __name__ == '__main__':
     z_shape = (64,100)
     in_dim = (batchSize, 256, 256, 3)
     generator = Generator(z_shape=z_shape).to(device)
-
-    #discriminator = Discriminator(in_dim).to(device)
+    discriminator = Discriminator(in_dim).to(device)
     #discriminator = Discriminator().to(device)
 
     # vocab_size,
@@ -227,9 +250,8 @@ if __name__ == '__main__':
     # loading saved model params to the text encoder
     text_encoder.load_state_dict(modifiedState)
 
-    # freeing references
-    del textEncoderState
     del modifiedState
+    del textEncoderState
 
     # sending text encoder to gpu
     text_encoder.to(device)
@@ -241,11 +263,11 @@ if __name__ == '__main__':
     text_encoder.eval()
 
     # try loading the image encoder
-    '''
     image_encoder = cnnEncoder()
 
     # loading pre trained weights to the image encoder
-    cubImageEncoderPath = "../CubDamsm/image_encoder200.pth"
+    cubImageEncoderPath = os.path.join(os.getcwd(),'CubDamsm','image_encoder200.pth')
+    #cubImageEncoderPath = "../CubDamsm/image_encoder200.pth"
     imageEncoderState = torch.load(cubImageEncoderPath, map_location=lambda storage, loc: storage)
     imageModifiedState = OrderedDict()
     for key, values in imageEncoderState.items():
@@ -288,6 +310,8 @@ if __name__ == '__main__':
         imageModifiedState[key] = values
 
     image_encoder.load_state_dict(imageModifiedState)
+    del imageEncoderState
+    del imageModifiedState
 
     image_encoder = image_encoder.to(device)
 
@@ -301,33 +325,30 @@ if __name__ == '__main__':
     # setting adam optimizer for generator and discriminator
     optimizerG = torch.optim.Adam(generator.parameters(),lr=0.0001, betas=(0.0,0.9))
     optimizerD = torch.optim.Adam(discriminator.parameters(),lr=0.0004, betas=(0.0, 0.9))
-    '''
 
     # loading training status for cub
-    trainFile = os.path.join(os.getcwd(),'DatasetPreparation','WithDAMSMTrainingCheckpoint.pth')
-    if (os.path.isfile(trainFile)):
+    trainFile = os.path.join(os.getcwd(),'cubTrainingCheckpoint.pth')
+    #trainFile = 'cubTrainingCheckpoint.pth'
+    if os.path.isfile(trainFile):
         print('loaded state!')
         checkpoint = torch.load(trainFile)
 
         generator.load_state_dict(checkpoint['generator_state_dict'])
-        #discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
-        #optimizerG.load_state_dict(checkpoint['optimizer_generator_state_dict'])
-        #optimizerD.load_state_dict(checkpoint['optimizer_discriminator_state_dict'])
+        discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+        optimizerG.load_state_dict(checkpoint['optimizer_generator_state_dict'])
+        optimizerD.load_state_dict(checkpoint['optimizer_discriminator_state_dict'])
         generatorLoss = checkpoint['gLoss']
         discriminatorLoss = checkpoint['dLoss']
         numEpoch = checkpoint['epoch']
-        # everything is loaded, we can free some memory references
         del checkpoint
-
-    # setting eval for generator, since we are at inference time
-    generator.eval()
 
     discriminatorLoss = None
     generatorLoss = None
 
-    # testing loop
+    # training loop
     # saving state every 10 epochs
-    test(cubDataLoader, cubDataset.indexToWord, generator, text_encoder,  device,  batchSize)
+    train(cubDataLoader, generator, discriminator,text_encoder, image_encoder, device, optimizerG, optimizerD,
+          numEpoch, batchSize, discriminatorLoss, generatorLoss,600, 5)
 
 
 

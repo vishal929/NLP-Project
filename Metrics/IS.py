@@ -1,7 +1,13 @@
+import pathlib
+
 import torch
 import torchvision
 import numpy as np
+from tqdm import tqdm
+from PIL import Image
 
+# pytorch is not the recommended way to calculate IS score please use this repo instead (OpenAI code implementation):
+#https://github.com/openai/improved-gan/blob/master/inception_score/model.py
 
 # calculating Inception Score for GANs
 
@@ -34,23 +40,55 @@ def inceptionScore(conditionalProb, epsilon=1e-8):
     return torch.exp(kl)
 
 
+def getFileNames(directory):
+    # just gets filenames for all png and jpg in a directory
+    path = pathlib.Path(directory)
+    images = list(path.glob('*.jpg')) + list(path.glob('*.png'))
+    return images
+
+def loadImages(filenames):
+    # just loads image data into a tensor
+    imgs = []
+    for filename in filenames:
+        img = Image.open(filename).convert('RGB')
+        imgs.append(img)
+    # returning tensor
+    return torch.tensor(imgs)
+
+
+
 # IS score only operates on the generated images, not the real ones
-def isScore(images):
-    # I think we should have enough vram to process all the generated images at once, lets try this
-    inceptionV3 = getInceptionModel()
+# images arguments here is just a list of filenames from getFileNames function
+def isScore(images,device):
+    inceptionV3 = getInceptionModel().to(device)
     inceptionV3.eval()
 
-    conditionalProbs = inceptionV3(images)
+    conditionalProbs = []
+    batchSize = 30
+    for batchNum in tqdm(range(batchSize)):
+        batchFileNames = images[(batchNum*batchSize):(batchNum*batchSize)+batchSize]
+        # loading images from a batch of filenames
+        imgs = loadImages(batchFileNames)
+        conditionalProb = inceptionV3(imgs)
+        conditionalProbs.append(conditionalProb)
+
+    #conditionalProbs = inceptionV3(images)
+
+    # concatenating tensors by batch dim
+    conditionalProbs = torch.cat(conditionalProbs,dim=0)
+
 
     # splitting into 10 parts for evaluation, as is the methodology in the Inception Score paper
+    # NOTE: the author of this paper uses 3 as the split size
+    split = 3
 
-    splitSize = torch.floor(conditionalProbs.shape[0] / 10)
+    splitSize = torch.floor(conditionalProbs.shape[0] / split)
 
-    conditionalProbs = torch.split(conditionalProbs, split_size_or_sections=splitSize)
+    conditionalProbs = torch.split(conditionalProbs, split_size_or_sections=splitSize, dim=0)
 
-    # asserting we should have exactly 10 parts
+    # asserting we should have exactly split parts
 
-    if len(conditionalProbs) != 10:
+    if len(conditionalProbs) != split:
         print('IS Score dimension assert triggered!')
 
     allScores = []
@@ -59,3 +97,8 @@ def isScore(images):
         allScores.append(batchScore)
 
     scoreAvg, scoreSTD = np.mean(allScores), np.std(allScores)
+
+    return scoreAvg, scoreSTD
+
+
+

@@ -54,28 +54,6 @@ def establishVocabulary(captionList):
 # imageClassPath is the path to the file mapping filenames of images to their classes
 def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
              imageIDPath, imageClassPath, picklePath):
-    # creating holder folders for train and test images and captions
-    # NOTE, WE MAY NOT NEED THE BELOW DIRECTORIES, WE JUST HAVE TO HAVE A STANDARDIZED LOCATION FOR CUB IMAGES AND CAPTIONS
-    '''
-    if (not os.path.isdir('../CUBS Dataset')):
-        os.mkdir('../CUBS Dataset')
-    dataDir = '../CUBS Dataset'
-    trainDir = os.path.join(dataDir,'Train')
-    testDir = os.path.join(dataDir,'Test')
-    if (not os.path.isdir(trainDir)):
-        os.mkdir(trainDir)
-    if (not os.path.isdir(testDir)):
-        os.mkdir(testDir)
-    if (not os.path.isdir(os.path.join(trainDir,'Images'))):
-        os.mkdir(os.path.join(trainDir,'Images'))
-    if (not os.path.isdir(os.path.join(trainDir,'Captions'))):
-        os.mkdir(os.path.join(trainDir,'Captions'))
-    if (not os.path.isdir(os.path.join(testDir, 'Images'))):
-        os.mkdir(os.path.join(testDir, 'Images'))
-    if (not os.path.isdir(os.path.join(testDir, 'Captions'))):
-        os.mkdir(os.path.join(testDir, 'Captions'))
-    '''
-
     # dictionary holding caption and image data formatted as:
     textImageData = {}
     trainTextImageData = {}
@@ -148,26 +126,9 @@ def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
                                                       float(tokens[4])))
     boundingBoxFile.close()
 
-    # for each image, crop it based on the bounding box, place it in the respective images folder
-    # process its captions, update the dictionary with processed captions and place them in the captions folder
-    # naming scheme: image is named by its image id
-    # captions for each image is designated by the imageID.txt
-    # i.e the processed captions for imageID 1 will be placed in 1.txt
-
     # processing training images and captions
     captionMapping= {}
     for trainImageID in trainTextImageData:
-        # cropping the image and saving it into images
-        '''
-        img = Image.open(os.path.join(sourceImageDir,trainTextImageData[trainImageID][0])).convert('RGB')
-        x = int(trainTextImageData[trainImageID][3][0])
-        y = int(trainTextImageData[trainImageID][3][1])
-        w = int(trainTextImageData[trainImageID][3][2])
-        h = int(trainTextImageData[trainImageID][3][3])
-        img = img.crop((x,y,x+w,y-h))
-        # saving image under imageID
-        img.save(os.path.join(os.path.join(trainDir,'Images'),trainTextImageData[trainImageID][1] + '.txt'))
-        '''
         # tokenizing captions
         processedCaptions=[]
         captionFile = open((os.path.join(sourceCaptionsDir,trainTextImageData[trainImageID][0]))[:-3]+'txt',encoding='utf8')
@@ -189,16 +150,6 @@ def setupCUB(sourceCaptionsDir, boundingBoxFilePath, trainTestSplitPath,
 
     # processing test images and captions
     for testImageID in testTextImageData:
-        '''
-        img = Image.open(os.path.join(sourceImageDir, testTextImageData[testImageID][0])).convert('RGB')
-        x = int(testTextImageData[testImageID][3][0])
-        y = int(testTextImageData[testImageID][3][1])
-        w = int(testTextImageData[testImageID][3][2])
-        h = int(testTextImageData[testImageID][3][3])
-        img = img.crop((x, y, x + w, y - h))
-        # saving image under imageID
-        img.save(os.path.join(os.path.join(testDir, 'Images'), testTextImageData[testImageID][1] + '.txt'))
-        '''
         # tokenize captions
         processedCaptions=[]
         captionFile = open((os.path.join(sourceCaptionsDir,testTextImageData[testImageID][0]))[:-3] + 'txt', encoding='utf8')

@@ -32,7 +32,7 @@ class AttentionalGenerator(torch.nn.Module):
     # then sending each (32x32x3) patch to some embedding through a linear layer
 
     patchDim = patchLength*patchLength*3
-    numPatches = (255 // patchLength) * (255 // patchLength)
+    numPatches = (256 // patchLength) * (256 // patchLength)
 
     self.transformPatches = torch.nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patchLength, p2 = patchLength),
@@ -48,16 +48,16 @@ class AttentionalGenerator(torch.nn.Module):
     self.wordPositions = torch.nn.Parameter(torch.randn(18,256))
     # 3 self attention layers
     self.selfAttentionLayers = torch.nn.Sequential(
-            AttentionalBlock(embedDim=attentionFeatures,isSelfAttention=True),
-            AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=True),
-            AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=True)
+            AttentionalBlock(embedDim=attentionFeatures,isSelfAttention=True,numPatches=numPatches),
+            AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=True, numPatches=numPatches),
+            AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=True, numPatches=numPatches)
     )
 
     # 3 cross attention layers
     self.crossAttentionLayers = torch.nn.Sequential(
-          AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=False),
-          AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=False),
-          AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=False)
+          AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=False, numPatches=numPatches),
+          AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=False, numPatches=numPatches),
+          AttentionalBlock(embedDim=attentionFeatures, isSelfAttention=False, numPatches=numPatches)
     )
 
     # sending our patch representations back to the patch dimension and reconstructing them into original shape
