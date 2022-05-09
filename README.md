@@ -47,8 +47,8 @@ https://github.com/bioinf-jku/TTUR
 
 Our checkpoints turned out to be not so great compared to the original author's implementation, but regardless 
 we provide both the DAMSM and non-DAMSM checkpoints below to download: 
-* DAMSM:
-* non-DAMSM: 
+* DAMSM: https://drive.google.com/file/d/1SOsqHbE-xCt0Z_wmnqbAp_0nrUSCCu17/view?usp=sharing
+* non-DAMSM: https://drive.google.com/file/d/1LTabIJWwVY0dhOXRn2z6xHjDEso5sSuF/view?usp=sharing
 
 ## Modification to Original Architecture:
 
